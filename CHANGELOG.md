@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## 1.3.0 - [Unreleased]
+## 1.3.1 - [Unreleased]
+### Changed
+
+* Make `Format` public so it can be reused
+
+## 1.3.0 - 2016-10-22
 ### Changed
 
 * **BREAKING**: Switched `AsyncStramer` to `slog_extra::Async`
