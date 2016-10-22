@@ -393,11 +393,17 @@ impl<D: Decorator + Send + Sync> StreamFormat for Format<D> {
 
 const TIMESTAMP_FORMAT: &'static str = "%b %d %H:%M:%S%.3f";
 
-fn timestamp_local(io : &mut io::Write) -> io::Result<()> {
+/// Default local timestamp function used by `Format`
+///
+/// The exact format used, is still subject to change.
+pub fn timestamp_local(io : &mut io::Write) -> io::Result<()> {
     write!(io, "{}", chrono::Local::now().format(TIMESTAMP_FORMAT))
 }
 
-fn timestamp_utc(io : &mut io::Write) -> io::Result<()> {
+/// Default UTC timestamp function used by `Format`
+///
+/// The exact format used, is still subject to change.
+pub fn timestamp_utc(io : &mut io::Write) -> io::Result<()> {
     write!(io, "{}", chrono::UTC::now().format(TIMESTAMP_FORMAT))
 }
 
