@@ -8,7 +8,7 @@ endif
 
 default: $(DEFAULT_TARGET)
 
-ALL_TARGETS += build $(EXAMPLES) test doc crates
+ALL_TARGETS += build $(EXAMPLES) test doc
 ifneq ($(RELEASE),)
 $(info RELEASE BUILD: $(PKG_NAME))
 CARGO_FLAGS += --release
@@ -17,26 +17,12 @@ $(info DEBUG BUILD: $(PKG_NAME); use `RELEASE=true make [args]` for release buil
 endif
 
 EXAMPLES = $(shell cd examples 2>/dev/null && ls *.rs 2>/dev/null | sed -e 's/.rs$$//g' )
-CRATES = $(shell cd crates 2>/dev/null && ls 2>/dev/null)
 
 all: $(ALL_TARGETS)
 
 .PHONY: run test build doc clean clippy
 run test build clean:
 	cargo $@ $(CARGO_FLAGS)
-
-test-all:
-	cargo test $(CARGO_FLAGS)
-	cd "crates/term"; cargo test $(CARGO_FLAGS)
-	cd "crates/serde"; cargo test $(CARGO_FLAGS)
-	cd "crates/json"; cargo test $(CARGO_FLAGS)
-	cd "crates/bunyan"; cargo test $(CARGO_FLAGS)
-	cd "crates/syslog"; cargo test $(CARGO_FLAGS)
-	cd "crates/stdlog"; cargo test $(CARGO_FLAGS)
-	cd "crates/atomic"; cargo test $(CARGO_FLAGS)
-	cd "crates/scope"; cargo test $(CARGO_FLAGS)
-	cd "crates/example-lib"; cargo test $(CARGO_FLAGS)
-	cd "crates/nursery"; cargo test $(CARGO_FLAGS)
 
 check:
 	$(info Running check; use `make build` to actually build)
@@ -50,7 +36,7 @@ bench:
 	cargo $@ $(filter-out --release,$(CARGO_FLAGS))
 
 .PHONY: travistest
-travistest: test-all
+travistest: test
 
 .PHONY: longtest
 longtest:
@@ -62,30 +48,9 @@ longtest:
 $(EXAMPLES):
 	cargo build --example $@ $(CARGO_FLAGS)
 
-.PHONY: crates
-crates: $(CRATES)
-
-.PHONY: $(CRATES)
-$(CRATES):
-	cd "crates/$@"; cargo build $(CARGO_FLAGS)
-	cd "crates/$@"; cargo test $(CARGO_FLAGS)
-
-examples/drain-graph.png: examples/drain-graph.dot
-	dot -Tpng $^ > $@
-
 .PHONY: doc
-doc: FORCE examples/drain-graph.png
+doc: FORCE
 	cargo doc
-	cd "crates/term"; cargo doc -p slog-term
-	cd "crates/serde"; cargo doc -p slog-serde
-	cd "crates/json"; cargo doc -p slog-json
-	cd "crates/bunyan"; cargo doc -p slog-bunyan
-	cd "crates/syslog"; cargo doc -p slog-syslog
-	cd "crates/stdlog"; cargo doc -p slog-stdlog
-	cd "crates/atomic"; cargo doc -p slog-atomic
-	cd "crates/scope"; cargo doc -p slog-scope
-	cd "crates/example-lib"; cargo doc -p slog-example-lib
-	cd "crates/nursery"; cargo doc -p slog-nursery
 
 .PHONY: publishdoc
 publishdoc:
