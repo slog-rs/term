@@ -158,7 +158,7 @@ impl<D: Decorator> Format<D> {
         };
 
         if let Some(logger_values) = logger_values_ref.values() {
-            if self.should_print(logger_values_ref as *const _ as usize, indent) {
+            if self.should_print(logger_values_ref.id(), indent) {
                 try!(self.print_indent(&mut ser.io, indent));
                 let mut clean = true;
                 let mut logger_values = logger_values;
