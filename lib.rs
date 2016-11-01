@@ -502,7 +502,7 @@ impl StreamerBuilder {
     }
 
     /// Build the streamer
-    pub fn build(self) -> Box<slog::Drain<Error=io::Error>> {
+    pub fn build(self) -> Box<slog::Drain<Error=io::Error>+Send+Sync> {
         let color = self.color.unwrap_or(if self.stdout {
             stdout_isatty()
         } else {
