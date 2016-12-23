@@ -62,36 +62,36 @@ impl<D: Decorator> Format<D> {
     fn print_msg_header(&self,
                         io: &mut io::Write,
                         rd: &D::RecordDecorator,
-                        info: &Record)
+                        record: &Record)
                         -> io::Result<()> {
         try!(rd.fmt_timestamp(io, &*self.fn_timestamp));
         try!(rd.fmt_level(io,
-                          &|io: &mut io::Write| write!(io, " {} ", info.level().as_short_str())));
+                          &|io: &mut io::Write| write!(io, " {} ", record.level().as_short_str())));
 
-        try!(rd.fmt_msg(io, &|io| write!(io, "{}", info.msg())));
+        try!(rd.fmt_msg(io, &|io| write!(io, "{}", record.msg())));
         Ok(())
     }
 
     fn format_full(&self,
                    io: &mut io::Write,
-                   info: &Record,
+                   record: &Record,
                    logger_values: &OwnedKeyValueList)
                    -> io::Result<()> {
 
-        let r_decorator = self.decorator.decorate(info);
+        let r_decorator = self.decorator.decorate(record);
 
 
-        try!(self.print_msg_header(io, &r_decorator, info));
+        try!(self.print_msg_header(io, &r_decorator, record));
         let mut serializer = Serializer::new(io, r_decorator);
 
         for (k, v) in logger_values.iter() {
             try!(serializer.print_comma());
-            try!(v.serialize(info, k, &mut serializer));
+            try!(v.serialize(record, k, &mut serializer));
         }
 
-        for &(k, v) in info.values() {
+        for &(k, v) in record.values() {
             try!(serializer.print_comma());
-            try!(v.serialize(info, k, &mut serializer));
+            try!(v.serialize(record, k, &mut serializer));
         }
         let (mut io, _decorator_r) = serializer.finish();
 
@@ -103,22 +103,22 @@ impl<D: Decorator> Format<D> {
 
     fn format_compact(&self,
                       io: &mut io::Write,
-                      info: &Record,
+                      record: &Record,
                       logger_values: &OwnedKeyValueList)
                       -> io::Result<()> {
 
-        let r_decorator = self.decorator.decorate(info);
+        let r_decorator = self.decorator.decorate(record);
         let mut ser = Serializer::new(io, r_decorator);
 
-        let indent = try!(self.format_recurse(&mut ser, info, logger_values));
+        let indent = try!(self.format_recurse(&mut ser, record, logger_values));
 
         try!(self.print_indent(&mut ser.io, indent));
 
-        try!(self.print_msg_header(&mut ser.io, &ser.decorator, info));
+        try!(self.print_msg_header(&mut ser.io, &ser.decorator, record));
 
-        for &(k, v) in info.values() {
+        for &(k, v) in record.values() {
             try!(ser.print_comma());
-            try!(v.serialize(info, k, &mut ser));
+            try!(v.serialize(record, k, &mut ser));
         }
         try!(write!(&mut ser.io, "\n"));
 
@@ -149,13 +149,13 @@ impl<D: Decorator> Format<D> {
 
     fn format_recurse<W: io::Write>(&self,
                                     ser: &mut Serializer<W, D::RecordDecorator>,
-                                    info: &slog::Record,
+                                    record: &slog::Record,
                                     logger_values_ref: &slog::OwnedKeyValueList)
                                     -> io::Result<usize> {
         let mut indent = if logger_values_ref.parent().is_none() {
             0
         } else {
-            try!(self.format_recurse(ser, info, logger_values_ref.parent().as_ref().unwrap()))
+            try!(self.format_recurse(ser, record, logger_values_ref.parent().as_ref().unwrap()))
         };
 
         if let Some(logger_values) = logger_values_ref.values() {
@@ -168,7 +168,7 @@ impl<D: Decorator> Format<D> {
                     if !clean {
                         try!(ser.print_comma());
                     }
-                    try!(v.serialize(info, k, ser));
+                    try!(v.serialize(record, k, ser));
                     clean = false;
                     logger_values = if let Some(v) = logger_values.tail() {
                         v
@@ -390,12 +390,12 @@ impl<W: io::Write, D: RecordDecorator> slog::ser::Serializer for Serializer<W, D
 impl<D: Decorator + Send + Sync> StreamFormat for Format<D> {
     fn format(&self,
               io: &mut io::Write,
-              info: &Record,
+              record: &Record,
               logger_values: &OwnedKeyValueList)
               -> io::Result<()> {
         match self.mode {
-            FormatMode::Compact => self.format_compact(io, info, logger_values),
-            FormatMode::Full => self.format_full(io, info, logger_values),
+            FormatMode::Compact => self.format_compact(io, record, logger_values),
+            FormatMode::Full => self.format_full(io, record, logger_values),
         }
     }
 }
