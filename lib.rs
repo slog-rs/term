@@ -140,16 +140,16 @@ impl<D: Decorator> Format<D> {
 
     // record in the history, and check if should print
     // given set of values
-    fn should_print(&self, line: &Vec<u8>, indent: usize) -> bool {
+    fn should_print(&self, line: &[u8], indent: usize) -> bool {
         let mut history = self.history.lock().unwrap();
         if history.len() <= indent {
             debug_assert_eq!(history.len(), indent);
-            history.push(line.clone());
+            history.push(line.into());
             true
         } else {
-            let should = history[indent] != *line;
-            history[indent] = line.clone();
+            let should = history[indent] != line;
             if should {
+                history[indent] = line.into();
                 history.truncate(indent + 1);
             }
             should
@@ -197,9 +197,9 @@ impl<D: Decorator> Format<D> {
 
                 let (mut line, _) = ser.finish();
 
-                if self.should_print(&line, indent) {
+                if self.should_print(line, indent) {
                     write!(line, "\n")?;
-                    io.write_all(&line)?;
+                    io.write_all(line)?;
                 }
                 Ok(())
             });
