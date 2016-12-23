@@ -20,6 +20,7 @@ extern crate isatty;
 extern crate chrono;
 
 use std::{io, fmt, sync};
+use std::io::Write;
 
 use isatty::{stderr_isatty, stdout_isatty};
 
@@ -44,7 +45,7 @@ pub enum FormatMode {
 pub struct Format<D: Decorator> {
     mode: FormatMode,
     decorator: D,
-    history: sync::Mutex<Vec<usize>>,
+    history: sync::Mutex<Vec<Vec<u8>>>,
     fn_timestamp: Box<TimestampFn>,
 }
 
@@ -107,14 +108,14 @@ impl<D: Decorator> Format<D> {
                       logger_values: &OwnedKeyValueList)
                       -> io::Result<()> {
 
+
+        let indent = try!(self.format_recurse(io, record, logger_values));
+
+        try!(self.print_indent(io, indent));
+
         let r_decorator = self.decorator.decorate(record);
         let mut ser = Serializer::new(io, r_decorator);
-
-        let indent = try!(self.format_recurse(&mut ser, record, logger_values));
-
-        try!(self.print_indent(&mut ser.io, indent));
-
-        try!(self.print_msg_header(&mut ser.io, &ser.decorator, record));
+        try!(self.print_msg_header(ser.io, &ser.decorator, record));
 
         for &(k, v) in record.values() {
             try!(ser.print_comma());
@@ -125,7 +126,7 @@ impl<D: Decorator> Format<D> {
         Ok(())
     }
 
-    fn print_indent<W: io::Write>(&self, io: &mut W, indent: usize) -> io::Result<()> {
+    fn print_indent(&self, io: &mut io::Write, indent: usize) -> io::Result<()> {
         for _ in 0..indent {
             try!(write!(io, "  "));
         }
@@ -134,49 +135,62 @@ impl<D: Decorator> Format<D> {
 
     // record in the history, and check if should print
     // given set of values
-    fn should_print(&self, address: usize, indent: usize) -> bool {
+    fn should_print(&self, line: &Vec<u8>, indent: usize) -> bool {
         let mut history = self.history.lock().unwrap();
         if history.len() <= indent {
             debug_assert_eq!(history.len(), indent);
-            history.push(address);
+            history.push(line.clone());
             true
         } else {
-            let should = history[indent] != address;
-            history[indent] = address;
+            let should = history[indent] != *line;
+            history[indent] = line.clone();
+            if should {
+                history.truncate(indent + 1);
+            }
             should
         }
     }
 
-    fn format_recurse<W: io::Write>(&self,
-                                    ser: &mut Serializer<W, D::RecordDecorator>,
-                                    record: &slog::Record,
-                                    logger_values_ref: &slog::OwnedKeyValueList)
+    fn format_recurse(&self,
+                      io : &mut io::Write,
+                      record: &slog::Record,
+                      logger_values_ref: &slog::OwnedKeyValueList)
                                     -> io::Result<usize> {
         let mut indent = if logger_values_ref.parent().is_none() {
             0
         } else {
-            try!(self.format_recurse(ser, record, logger_values_ref.parent().as_ref().unwrap()))
+            try!(self.format_recurse(io, record, logger_values_ref.parent().as_ref().unwrap()))
         };
 
+
         if let Some(logger_values) = logger_values_ref.values() {
-            if self.should_print(logger_values_ref.id(), indent) {
-                try!(self.print_indent(&mut ser.io, indent));
-                let mut clean = true;
-                let mut logger_values = logger_values;
-                loop {
-                    let (k, v) = logger_values.head();
-                    if !clean {
-                        try!(ser.print_comma());
-                    }
-                    try!(v.serialize(record, k, ser));
-                    clean = false;
-                    logger_values = if let Some(v) = logger_values.tail() {
-                        v
-                    } else {
-                        break;
-                    }
+
+            let line = vec![];
+            let r_decorator = self.decorator.decorate(record);
+            let mut ser = Serializer::new(line, r_decorator);
+
+            try!(self.print_indent(&mut ser.io, indent));
+            let mut clean = true;
+            let mut logger_values = logger_values;
+            loop {
+                let (k, v) = logger_values.head();
+                if !clean {
+                    try!(ser.print_comma());
                 }
-                try!(write!(&mut ser.io, "\n"));
+                try!(v.serialize(record, k, &mut ser));
+                clean = false;
+                logger_values = if let Some(v) = logger_values.tail() {
+                    v
+                } else {
+                    break;
+                }
+            }
+
+            let (mut line, _) = ser.finish();
+
+            if self.should_print(&line, indent) {
+                try!(write!(line, "\n"));
+                try!(io.write_all(&line));
             }
             indent += 1
         }
