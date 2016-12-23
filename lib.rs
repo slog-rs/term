@@ -65,7 +65,8 @@ impl<D: Decorator> Format<D> {
                         info: &Record)
                         -> io::Result<()> {
         try!(rd.fmt_timestamp(io, &*self.fn_timestamp));
-        try!(rd.fmt_level(io, &|io : &mut io::Write| write!(io, " {} ", info.level().as_short_str())));
+        try!(rd.fmt_level(io,
+                          &|io: &mut io::Write| write!(io, " {} ", info.level().as_short_str())));
 
         try!(rd.fmt_msg(io, &|io| write!(io, "{}", info.msg())));
         Ok(())
@@ -83,7 +84,7 @@ impl<D: Decorator> Format<D> {
         try!(self.print_msg_header(io, &r_decorator, info));
         let mut serializer = Serializer::new(io, r_decorator);
 
-        for (k, ref v) in logger_values.iter() {
+        for (k, v) in logger_values.iter() {
             try!(serializer.print_comma());
             try!(v.serialize(info, k, &mut serializer));
         }
@@ -163,7 +164,7 @@ impl<D: Decorator> Format<D> {
                 let mut clean = true;
                 let mut logger_values = logger_values;
                 loop {
-                    let (k, ref v) = logger_values.head();
+                    let (k, v) = logger_values.head();
                     if !clean {
                         try!(ser.print_comma());
                     }
@@ -238,7 +239,10 @@ impl Decorator for ColorDecorator {
 
 
 impl RecordDecorator for ColorRecordDecorator {
-    fn fmt_level(&self, io: &mut io::Write, f: &Fn(&mut io::Write) -> io::Result<()>) -> io::Result<()> {
+    fn fmt_level(&self,
+                 io: &mut io::Write,
+                 f: &Fn(&mut io::Write) -> io::Result<()>)
+                 -> io::Result<()> {
         if let Some(level_color) = self.level_color {
             try!(write!(io, "\x1b[3{}m", level_color));
             try!(f(io));
@@ -250,7 +254,10 @@ impl RecordDecorator for ColorRecordDecorator {
     }
 
 
-    fn fmt_msg(&self, io: &mut io::Write, f: &Fn(&mut io::Write) -> io::Result<()>) -> io::Result<()> {
+    fn fmt_msg(&self,
+               io: &mut io::Write,
+               f: &Fn(&mut io::Write) -> io::Result<()>)
+               -> io::Result<()> {
         if self.key_bold {
             try!(write!(io, "\x1b[1m"));
             try!(f(io));
@@ -261,7 +268,10 @@ impl RecordDecorator for ColorRecordDecorator {
         Ok(())
     }
 
-    fn fmt_key(&self, io: &mut io::Write, f: &Fn(&mut io::Write) -> io::Result<()>) -> io::Result<()> {
+    fn fmt_key(&self,
+               io: &mut io::Write,
+               f: &Fn(&mut io::Write) -> io::Result<()>)
+               -> io::Result<()> {
         self.fmt_msg(io, f)
     }
 }
@@ -280,7 +290,7 @@ impl<W: io::Write, D: RecordDecorator> Serializer<W, D> {
     }
 
     fn print_comma(&mut self) -> io::Result<()> {
-        try!(self.decorator.fmt_separator(&mut self.io, &|io : &mut io::Write| write!(io, ", ")));
+        try!(self.decorator.fmt_separator(&mut self.io, &|io: &mut io::Write| write!(io, ", ")));
         Ok(())
     }
 
@@ -375,7 +385,6 @@ impl<W: io::Write, D: RecordDecorator> slog::ser::Serializer for Serializer<W, D
         s!(self, key, val);
         Ok(())
     }
-
 }
 
 impl<D: Decorator + Send + Sync> StreamFormat for Format<D> {
@@ -396,14 +405,14 @@ const TIMESTAMP_FORMAT: &'static str = "%b %d %H:%M:%S%.3f";
 /// Default local timestamp function used by `Format`
 ///
 /// The exact format used, is still subject to change.
-pub fn timestamp_local(io : &mut io::Write) -> io::Result<()> {
+pub fn timestamp_local(io: &mut io::Write) -> io::Result<()> {
     write!(io, "{}", chrono::Local::now().format(TIMESTAMP_FORMAT))
 }
 
 /// Default UTC timestamp function used by `Format`
 ///
 /// The exact format used, is still subject to change.
-pub fn timestamp_utc(io : &mut io::Write) -> io::Result<()> {
+pub fn timestamp_utc(io: &mut io::Write) -> io::Result<()> {
     write!(io, "{}", chrono::UTC::now().format(TIMESTAMP_FORMAT))
 }
 
@@ -496,24 +505,23 @@ impl StreamerBuilder {
 
     /// Provide a custom function to generate the timestamp
     pub fn use_custom_timestamp<F>(mut self, f: F) -> Self
-        where F : Fn(&mut io::Write) -> io::Result<()> + 'static + Send + Sync {
+        where F: Fn(&mut io::Write) -> io::Result<()> + 'static + Send + Sync
+    {
         self.fn_timestamp = Box::new(f);
         self
     }
 
     /// Build the streamer
-    pub fn build(self) -> Box<slog::Drain<Error=io::Error>+Send+Sync> {
+    pub fn build(self) -> Box<slog::Drain<Error = io::Error> + Send + Sync> {
         let color = self.color.unwrap_or(if self.stdout {
             stdout_isatty()
         } else {
             stderr_isatty()
         });
 
-        let format = Format::new(
-            self.mode,
-            ColorDecorator { use_color: color },
-            self.fn_timestamp
-        );
+        let format = Format::new(self.mode,
+                                 ColorDecorator { use_color: color },
+                                 self.fn_timestamp);
 
         let io = if self.stdout {
             Box::new(io::stdout()) as Box<io::Write + Send>
