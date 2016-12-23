@@ -18,8 +18,9 @@ extern crate slog;
 extern crate slog_stream;
 extern crate isatty;
 extern crate chrono;
+extern crate thread_local;
 
-use std::{io, fmt, sync};
+use std::{io, fmt, sync, cell};
 use std::io::Write;
 
 use isatty::{stderr_isatty, stdout_isatty};
@@ -29,6 +30,10 @@ use slog::ser;
 use slog::{Level, OwnedKeyValueList};
 use slog_stream::Format as StreamFormat;
 use slog_stream::{Decorator, RecordDecorator, stream, async_stream};
+
+thread_local! {
+    static TL_BUF: cell::RefCell<Vec<u8>> = cell::RefCell::new(Vec::with_capacity(128));
+}
 
 /// Timestamp function type
 pub type TimestampFn = Fn(&mut io::Write) -> io::Result<()> + Send + Sync;
@@ -151,6 +156,9 @@ impl<D: Decorator> Format<D> {
         }
     }
 
+    /// Recursively format given `logger_values_ref`
+    ///
+    /// Returns it's indent level
     fn format_recurse(&self,
                       io : &mut io::Write,
                       record: &slog::Record,
@@ -164,35 +172,39 @@ impl<D: Decorator> Format<D> {
 
 
         if let Some(logger_values) = logger_values_ref.values() {
+            let res : io::Result<()> = TL_BUF.with(|line| {
+                let mut line = line.borrow_mut();
+                line.clear();
+                let r_decorator = self.decorator.decorate(record);
+                let mut ser = Serializer::new(&mut *line, r_decorator);
 
-            let line = vec![];
-            let r_decorator = self.decorator.decorate(record);
-            let mut ser = Serializer::new(line, r_decorator);
-
-            try!(self.print_indent(&mut ser.io, indent));
-            let mut clean = true;
-            let mut logger_values = logger_values;
-            loop {
-                let (k, v) = logger_values.head();
-                if !clean {
-                    try!(ser.print_comma());
+                try!(self.print_indent(&mut ser.io, indent));
+                let mut clean = true;
+                let mut logger_values = logger_values;
+                loop {
+                    let (k, v) = logger_values.head();
+                    if !clean {
+                        try!(ser.print_comma());
+                    }
+                    try!(v.serialize(record, k, &mut ser));
+                    clean = false;
+                    logger_values = if let Some(v) = logger_values.tail() {
+                        v
+                    } else {
+                        break;
+                    }
                 }
-                try!(v.serialize(record, k, &mut ser));
-                clean = false;
-                logger_values = if let Some(v) = logger_values.tail() {
-                    v
-                } else {
-                    break;
+
+                let (mut line, _) = ser.finish();
+
+                if self.should_print(&line, indent) {
+                    write!(line, "\n")?;
+                    io.write_all(&line)?;
                 }
-            }
-
-            let (mut line, _) = ser.finish();
-
-            if self.should_print(&line, indent) {
-                try!(write!(line, "\n"));
-                try!(io.write_all(&line));
-            }
-            indent += 1
+                Ok(())
+            });
+            res?;
+            indent += 1;
         }
 
         Ok(indent)
