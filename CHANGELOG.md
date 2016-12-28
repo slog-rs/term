@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## 1.3.4 - [Unreleased]
+## 1.3.4 - 2016-12-27
 ### Fixed
 
 * [Fix compact formatting grouping messages incorrectly](https://github.com/slog-rs/slog/issues/90)
