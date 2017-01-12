@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## Unreleased
+### Changed
+
+* No comma will be printed after an empty "msg" field
+
 ## 1.3.5 - 2016-01-13
 ### Fixed
 
