@@ -198,12 +198,12 @@ impl<D: Decorator> Format<D> {
                 let (mut line, _) = ser.finish();
 
                 if self.should_print(line, indent) {
-                    write!(line, "\n")?;
-                    io.write_all(line)?;
+                    try!(write!(line, "\n"));
+                    try!(io.write_all(line));
                 }
                 Ok(())
             });
-            res?;
+            try!(res);
             indent += 1;
         }
 

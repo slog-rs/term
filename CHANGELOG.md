@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 1.3.5 - 2016-01-13
+### Fixed
+
+* [1.3.4 with `?` operator breaks semver](https://github.com/slog-rs/term/issues/6) - fix allows builds on stable Rust back to 1.11
+
 ## 1.3.4 - 2016-12-27
 ### Fixed
 
