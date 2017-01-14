@@ -199,19 +199,17 @@ impl<D: Decorator> Format<D> {
         for (k, v) in logger_values.iter() {
             if comma_needed {
                 try!(serializer.print_comma());
-            } else {
-                comma_needed |= true;
             }
             try!(v.serialize(record, k, &mut serializer));
+            comma_needed |= true;
         }
 
         for &(k, v) in record.values() {
             if comma_needed {
                 try!(serializer.print_comma());
-            } else {
-                comma_needed |= true;
             }
             try!(v.serialize(record, k, &mut serializer));
+            comma_needed |= true;
         }
         let (mut io, _decorator_r) = serializer.finish();
 
@@ -239,10 +237,9 @@ impl<D: Decorator> Format<D> {
         for &(k, v) in record.values() {
             if comma_needed {
                 try!(ser.print_comma());
-            } else {
-                comma_needed |= true;
             }
             try!(v.serialize(record, k, &mut ser));
+            comma_needed |= true;
         }
         try!(write!(&mut ser.io, "\n"));
 
