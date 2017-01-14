@@ -116,6 +116,12 @@ impl<'a> SurroundingWriter<'a> {
     }
 }
 
+impl<'a> Drop for SurroundingWriter<'a> {
+    fn drop(&mut self) {
+        let _ = self.finish();
+    }
+}
+
 impl<'a> Write for SurroundingWriter<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         try!(self.do_before(buf));
