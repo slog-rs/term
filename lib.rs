@@ -35,6 +35,110 @@ thread_local! {
     static TL_BUF: cell::RefCell<Vec<u8>> = cell::RefCell::new(Vec::with_capacity(128));
 }
 
+// Wrapper for `Write` types that counts total bytes written.
+struct CountingWriter<'a> {
+    wrapped: &'a mut io::Write,
+    count: usize,
+}
+
+impl<'a> CountingWriter<'a> {
+    fn new(wrapped: &'a mut io::Write) -> CountingWriter {
+        CountingWriter {
+            wrapped: wrapped,
+            count: 0,
+        }
+    }
+
+    fn count(&self) -> usize {
+        self.count
+    }
+}
+
+impl<'a> Write for CountingWriter<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.wrapped.write(buf).map(|n| {
+            self.count += n;
+            n
+        })
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.wrapped.flush()
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        self.wrapped.write_all(buf).map(|_| {
+            self.count += buf.len();
+            ()
+        })
+    }
+}
+
+type WriterFn = Fn(&mut io::Write) -> io::Result<()>;
+
+// Wrapper for `Write` types that executes a closure before writing anything,
+// but only if the write isn't empty. A `finish` call executes a closure after
+// writing, but again, only if something has been written.
+struct SurroundingWriter<'a> {
+    wrapped: &'a mut io::Write,
+    before: Option<&'a WriterFn>,
+    after: Option<&'a WriterFn>,
+}
+
+impl<'a> SurroundingWriter<'a> {
+    fn new(wrapped: &'a mut io::Write,
+           before: &'a WriterFn,
+           after: &'a WriterFn)
+           -> SurroundingWriter<'a> {
+        SurroundingWriter {
+            wrapped: wrapped,
+            before: Some(before),
+            after: Some(after),
+        }
+    }
+
+    fn do_before(&mut self, buf: &[u8]) -> io::Result<()> {
+        if buf.len() > 0 {
+            if let Some(before) = self.before.take() {
+                try!(before(self.wrapped));
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(&mut self) -> io::Result<()> {
+        if let Some(after) = self.after.take() {
+            if self.before.is_none() {
+                try!(after(self.wrapped));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'a> Drop for SurroundingWriter<'a> {
+    fn drop(&mut self) {
+        let _ = self.finish();
+    }
+}
+
+impl<'a> Write for SurroundingWriter<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        try!(self.do_before(buf));
+        self.wrapped.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.wrapped.flush()
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        try!(self.do_before(buf));
+        self.wrapped.write_all(buf)
+    }
+}
+
+
 /// Timestamp function type
 pub type TimestampFn = Fn(&mut io::Write) -> io::Result<()> + Send + Sync;
 
@@ -65,17 +169,19 @@ impl<D: Decorator> Format<D> {
         }
     }
 
+    // Returns `true` if message was not empty
     fn print_msg_header(&self,
                         io: &mut io::Write,
                         rd: &D::RecordDecorator,
                         record: &Record)
-                        -> io::Result<()> {
+                        -> io::Result<bool> {
         try!(rd.fmt_timestamp(io, &*self.fn_timestamp));
         try!(rd.fmt_level(io,
                           &|io: &mut io::Write| write!(io, " {} ", record.level().as_short_str())));
 
-        try!(rd.fmt_msg(io, &|io| write!(io, "{}", record.msg())));
-        Ok(())
+        let mut writer = CountingWriter::new(io);
+        try!(rd.fmt_msg(&mut writer, &|io| write!(io, "{}", record.msg())));
+        Ok(writer.count() > 0)
     }
 
     fn format_full(&self,
@@ -87,16 +193,24 @@ impl<D: Decorator> Format<D> {
         let r_decorator = self.decorator.decorate(record);
 
 
-        try!(self.print_msg_header(io, &r_decorator, record));
+        let mut comma_needed = try!(self.print_msg_header(io, &r_decorator, record));
         let mut serializer = Serializer::new(io, r_decorator);
 
         for (k, v) in logger_values.iter() {
-            try!(serializer.print_comma());
+            if comma_needed {
+                try!(serializer.print_comma());
+            } else {
+                comma_needed |= true;
+            }
             try!(v.serialize(record, k, &mut serializer));
         }
 
         for &(k, v) in record.values() {
-            try!(serializer.print_comma());
+            if comma_needed {
+                try!(serializer.print_comma());
+            } else {
+                comma_needed |= true;
+            }
             try!(v.serialize(record, k, &mut serializer));
         }
         let (mut io, _decorator_r) = serializer.finish();
@@ -120,10 +234,14 @@ impl<D: Decorator> Format<D> {
 
         let r_decorator = self.decorator.decorate(record);
         let mut ser = Serializer::new(io, r_decorator);
-        try!(self.print_msg_header(ser.io, &ser.decorator, record));
+        let mut comma_needed = try!(self.print_msg_header(ser.io, &ser.decorator, record));
 
         for &(k, v) in record.values() {
-            try!(ser.print_comma());
+            if comma_needed {
+                try!(ser.print_comma());
+            } else {
+                comma_needed |= true;
+            }
             try!(v.serialize(record, k, &mut ser));
         }
         try!(write!(&mut ser.io, "\n"));
@@ -285,9 +403,11 @@ impl RecordDecorator for ColorRecordDecorator {
                f: &Fn(&mut io::Write) -> io::Result<()>)
                -> io::Result<()> {
         if self.key_bold {
-            try!(write!(io, "\x1b[1m"));
-            try!(f(io));
-            try!(write!(io, "\x1b[0m"));
+            let before = |io: &mut io::Write| write!(io, "\x1b[1m");
+            let after = |io: &mut io::Write| write!(io, "\x1b[0m");
+            let mut wrapper = SurroundingWriter::new(io, &before, &after);
+            try!(f(&mut wrapper));
+            try!(wrapper.finish());
         } else {
             try!(f(io));
         }
