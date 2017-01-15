@@ -349,7 +349,7 @@ impl ColorDecorator {
     }
     /// New decorator that does not color records
     pub fn new_plain() -> Self {
-        ColorDecorator { use_color: true }
+        ColorDecorator { use_color: false }
     }
 }
 

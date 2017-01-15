@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## Unreleased
 ### Changed
 
+* Fix a bug in `new_plain` that would make it still use colors.
 * No comma will be printed after an empty "msg" field
 
 ## 1.3.5 - 2016-01-13
