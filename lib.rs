@@ -196,6 +196,14 @@ impl<D: Decorator> Format<D> {
         let mut comma_needed = try!(self.print_msg_header(io, &r_decorator, record));
         let mut serializer = Serializer::new(io, r_decorator);
 
+        for &(k, v) in record.values() {
+            if comma_needed {
+                try!(serializer.print_comma());
+            }
+            try!(v.serialize(record, k, &mut serializer));
+            comma_needed |= true;
+        }
+
         for (k, v) in logger_values.iter() {
             if comma_needed {
                 try!(serializer.print_comma());
@@ -204,13 +212,6 @@ impl<D: Decorator> Format<D> {
             comma_needed |= true;
         }
 
-        for &(k, v) in record.values() {
-            if comma_needed {
-                try!(serializer.print_comma());
-            }
-            try!(v.serialize(record, k, &mut serializer));
-            comma_needed |= true;
-        }
         let (mut io, _decorator_r) = serializer.finish();
 
         try!(write!(io, "\n"));

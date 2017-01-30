@@ -4,11 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## Unreleased
+## 1.4.0 - Unreleased
 ### Changed
 
 * Fix a bug in `new_plain` that would make it still use colors.
 * No comma will be printed after an empty "msg" field
+* Changed order of full format values
 
 ## 1.3.5 - 2016-01-13
 ### Fixed
