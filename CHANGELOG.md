@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## 1.4.0 - Unreleased
+## 1.4.0 - 2017-01-29
 ### Changed
 
 * Fix a bug in `new_plain` that would make it still use colors.
