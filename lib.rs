@@ -25,8 +25,7 @@ use std::io::Write;
 use isatty::{stderr_isatty, stdout_isatty};
 
 use slog::Record;
-use slog::ser;
-use slog::{Level, OwnedKeyValueList};
+use slog::{Level, OwnedKVList, KV};
 use slog_stream::Format as StreamFormat;
 use slog_stream::{Decorator, RecordDecorator, stream, async_stream};
 
@@ -171,7 +170,7 @@ impl<D: Decorator> Format<D> {
     // Returns `true` if message was not empty
     fn print_msg_header(&self,
                         io: &mut io::Write,
-                        rd: &D::RecordDecorator,
+                        rd: &mut D::RecordDecorator,
                         record: &Record)
                         -> io::Result<bool> {
         try!(rd.fmt_timestamp(io, &*self.fn_timestamp));
@@ -179,35 +178,35 @@ impl<D: Decorator> Format<D> {
                           &|io: &mut io::Write| write!(io, " {} ", record.level().as_short_str())));
 
         let mut writer = CountingWriter::new(io);
-        try!(rd.fmt_msg(&mut writer, &|io| write!(io, "{}", record.msg())));
+        try!(rd.fmt_msg(&mut writer, |io| write!(io, "{}", record.msg())));
         Ok(writer.count() > 0)
     }
 
     fn format_full(&self,
                    io: &mut io::Write,
                    record: &Record,
-                   logger_values: &OwnedKeyValueList)
+                   logger_values: &OwnedKVList)
                    -> io::Result<()> {
 
-        let r_decorator = self.decorator.decorate(record);
+        let mut r_decorator = self.decorator.decorate(record);
 
 
-        let mut comma_needed = try!(self.print_msg_header(io, &r_decorator, record));
+        let mut comma_needed = try!(self.print_msg_header(io, &mut r_decorator, record));
         let mut serializer = Serializer::new(io, r_decorator);
 
-        for &(k, v) in record.values().iter().rev() {
+        for kv in record.kvs().iter().rev() {
             if comma_needed {
                 try!(serializer.print_comma());
             }
-            try!(v.serialize(record, k, &mut serializer));
+            try!(kv.serialize(record, &mut serializer));
             comma_needed |= true;
         }
 
-        for (k, v) in logger_values.iter() {
+        for kv in logger_values.iter_single() {
             if comma_needed {
                 try!(serializer.print_comma());
             }
-            try!(v.serialize(record, k, &mut serializer));
+            try!(kv.serialize(record, &mut serializer));
             comma_needed |= true;
         }
 
@@ -222,23 +221,25 @@ impl<D: Decorator> Format<D> {
     fn format_compact(&self,
                       io: &mut io::Write,
                       record: &Record,
-                      logger_values: &OwnedKeyValueList)
+                      logger_kvs: &OwnedKVList)
                       -> io::Result<()> {
 
 
-        let indent = try!(self.format_recurse(io, record, logger_values));
+        let mut iter = logger_kvs.iter_groups();
+        let kv = iter.next();
+        let indent = try!(self.format_recurse(io, record, kv, &mut iter));
 
         try!(self.print_indent(io, indent));
 
         let r_decorator = self.decorator.decorate(record);
         let mut ser = Serializer::new(io, r_decorator);
-        let mut comma_needed = try!(self.print_msg_header(ser.io, &ser.decorator, record));
+        let mut comma_needed = try!(self.print_msg_header(ser.io, &mut ser.decorator, record));
 
-        for &(k, v) in record.values() {
+        for kv in record.kvs() {
             if comma_needed {
                 try!(ser.print_comma());
             }
-            try!(v.serialize(record, k, &mut ser));
+            try!(kv.serialize(record, &mut ser));
             comma_needed |= true;
         }
         try!(write!(&mut ser.io, "\n"));
@@ -277,58 +278,56 @@ impl<D: Decorator> Format<D> {
     fn format_recurse(&self,
                       io : &mut io::Write,
                       record: &slog::Record,
-                      logger_values_ref: &slog::OwnedKeyValueList)
+                      kv : Option<&KV>,
+                      kv_iter: &mut slog::OwnedKVGroupIterator)
                                     -> io::Result<usize> {
-        let mut indent = if logger_values_ref.parent().is_none() {
-            0
+        let (kv, indent) = if let Some(kv) = kv {
+            let next_kv = kv_iter.next();
+            (kv, try!(self.format_recurse(io, record, next_kv, kv_iter)))
         } else {
-            try!(self.format_recurse(io, record, logger_values_ref.parent().as_ref().unwrap()))
+            return Ok(0);
         };
 
 
-        if let Some(logger_values) = logger_values_ref.values() {
-            let res : io::Result<()> = TL_BUF.with(|line| {
-                let mut line = line.borrow_mut();
-                line.clear();
-                let r_decorator = self.decorator.decorate(record);
-                let mut ser = Serializer::new(&mut *line, r_decorator);
+        let res : io::Result<()> = TL_BUF.with(|line| {
+            let mut line = line.borrow_mut();
+            line.clear();
+            let r_decorator = self.decorator.decorate(record);
+            let mut ser = Serializer::new(&mut *line, r_decorator);
 
-                try!(self.print_indent(&mut ser.io, indent));
-                let mut clean = true;
-                let mut logger_values = logger_values;
-                let mut kvs = vec!();
-                loop {
-                    let (k, v) = logger_values.head();
-                    kvs.push((k, v));
-
-                    logger_values = if let Some(v) = logger_values.tail() {
-                        v
-                    } else {
-                        break;
-                    }
+            try!(self.print_indent(&mut ser.io, indent));
+            let mut clean = true;
+            let mut kv  = kv;
+            let mut all_kvs = vec!();
+            loop {
+                kv = if let Some((v, rest)) = kv.split_first() {
+                    all_kvs.push(v);
+                    rest
+                } else {
+                    break;
                 }
 
-                for &(k, v) in kvs.iter().rev() {
-                    if !clean {
-                        try!(ser.print_comma());
-                    }
-                    try!(v.serialize(record, k, &mut ser));
-                    clean = false;
+            }
+
+            for kv in all_kvs.iter().rev() {
+                if !clean {
+                    try!(ser.print_comma());
                 }
+                try!(kv.serialize(record, &mut ser));
+                clean = false;
+            }
 
-                let (mut line, _) = ser.finish();
+            let (mut line, _) = ser.finish();
 
-                if self.should_print(line, indent) {
-                    try!(write!(line, "\n"));
-                    try!(io.write_all(line));
-                }
-                Ok(())
-            });
-            try!(res);
-            indent += 1;
-        }
+            if self.should_print(line, indent) {
+                try!(write!(line, "\n"));
+                try!(io.write_all(line));
+            }
+            Ok(())
+        });
+        try!(res);
 
-        Ok(indent)
+        Ok(indent + 1)
     }
 }
 
@@ -386,10 +385,11 @@ impl Decorator for ColorDecorator {
 
 
 impl RecordDecorator for ColorRecordDecorator {
-    fn fmt_level(&self,
+    fn fmt_level<F>(&mut self,
                  io: &mut io::Write,
-                 f: &Fn(&mut io::Write) -> io::Result<()>)
-                 -> io::Result<()> {
+                 f: F)
+                 -> io::Result<()>
+        where F : FnOnce(&mut io::Write) -> io::Result<()> {
         if let Some(level_color) = self.level_color {
             try!(write!(io, "\x1b[3{}m", level_color));
             try!(f(io));
@@ -401,10 +401,11 @@ impl RecordDecorator for ColorRecordDecorator {
     }
 
 
-    fn fmt_msg(&self,
+    fn fmt_msg<F>(&mut self,
                io: &mut io::Write,
-               f: &Fn(&mut io::Write) -> io::Result<()>)
-               -> io::Result<()> {
+               f: F)
+               -> io::Result<()>
+        where F : FnOnce(&mut io::Write) -> io::Result<()> {
         if self.key_bold {
             let before = |io: &mut io::Write| write!(io, "\x1b[1m");
             let after = |io: &mut io::Write| write!(io, "\x1b[0m");
@@ -417,10 +418,11 @@ impl RecordDecorator for ColorRecordDecorator {
         Ok(())
     }
 
-    fn fmt_key(&self,
+    fn fmt_key<F>(&mut self,
                io: &mut io::Write,
-               f: &Fn(&mut io::Write) -> io::Result<()>)
-               -> io::Result<()> {
+               f: F)
+               -> io::Result<()>
+        where F : FnOnce(&mut io::Write) -> io::Result<()> {
         self.fmt_msg(io, f)
     }
 }
@@ -458,79 +460,79 @@ macro_rules! s(
 
 
 impl<W: io::Write, D: RecordDecorator> slog::ser::Serializer for Serializer<W, D> {
-    fn emit_none(&mut self, key: &str) -> ser::Result {
+    fn emit_none(&mut self, key: &str) -> slog::Result {
         s!(self, key, "None");
         Ok(())
     }
-    fn emit_unit(&mut self, key: &str) -> ser::Result {
+    fn emit_unit(&mut self, key: &str) -> slog::Result {
         s!(self, key, "()");
         Ok(())
     }
 
-    fn emit_bool(&mut self, key: &str, val: bool) -> ser::Result {
+    fn emit_bool(&mut self, key: &str, val: bool) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
 
-    fn emit_char(&mut self, key: &str, val: char) -> ser::Result {
+    fn emit_char(&mut self, key: &str, val: char) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
 
-    fn emit_usize(&mut self, key: &str, val: usize) -> ser::Result {
+    fn emit_usize(&mut self, key: &str, val: usize) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_isize(&mut self, key: &str, val: isize) -> ser::Result {
+    fn emit_isize(&mut self, key: &str, val: isize) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
 
-    fn emit_u8(&mut self, key: &str, val: u8) -> ser::Result {
+    fn emit_u8(&mut self, key: &str, val: u8) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_i8(&mut self, key: &str, val: i8) -> ser::Result {
+    fn emit_i8(&mut self, key: &str, val: i8) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_u16(&mut self, key: &str, val: u16) -> ser::Result {
+    fn emit_u16(&mut self, key: &str, val: u16) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_i16(&mut self, key: &str, val: i16) -> ser::Result {
+    fn emit_i16(&mut self, key: &str, val: i16) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_u32(&mut self, key: &str, val: u32) -> ser::Result {
+    fn emit_u32(&mut self, key: &str, val: u32) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_i32(&mut self, key: &str, val: i32) -> ser::Result {
+    fn emit_i32(&mut self, key: &str, val: i32) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_f32(&mut self, key: &str, val: f32) -> ser::Result {
+    fn emit_f32(&mut self, key: &str, val: f32) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_u64(&mut self, key: &str, val: u64) -> ser::Result {
+    fn emit_u64(&mut self, key: &str, val: u64) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_i64(&mut self, key: &str, val: i64) -> ser::Result {
+    fn emit_i64(&mut self, key: &str, val: i64) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_f64(&mut self, key: &str, val: f64) -> ser::Result {
+    fn emit_f64(&mut self, key: &str, val: f64) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_str(&mut self, key: &str, val: &str) -> ser::Result {
+    fn emit_str(&mut self, key: &str, val: &str) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_arguments(&mut self, key: &str, val: &fmt::Arguments) -> ser::Result {
+    fn emit_arguments(&mut self, key: &str, val: &fmt::Arguments) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
@@ -540,7 +542,7 @@ impl<D: Decorator + Send + Sync> StreamFormat for Format<D> {
     fn format(&self,
               io: &mut io::Write,
               record: &Record,
-              logger_values: &OwnedKeyValueList)
+              logger_values: &OwnedKVList)
               -> io::Result<()> {
         match self.mode {
             FormatMode::Compact => self.format_compact(io, record, logger_values),
