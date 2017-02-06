@@ -13,7 +13,6 @@
 //! ```
 #![warn(missing_docs)]
 
-#[macro_use]
 extern crate slog;
 extern crate slog_stream;
 extern crate isatty;
@@ -196,7 +195,7 @@ impl<D: Decorator> Format<D> {
         let mut comma_needed = try!(self.print_msg_header(io, &r_decorator, record));
         let mut serializer = Serializer::new(io, r_decorator);
 
-        for &(k, v) in record.values() {
+        for &(k, v) in record.values().iter().rev() {
             if comma_needed {
                 try!(serializer.print_comma());
             }
@@ -297,18 +296,24 @@ impl<D: Decorator> Format<D> {
                 try!(self.print_indent(&mut ser.io, indent));
                 let mut clean = true;
                 let mut logger_values = logger_values;
+                let mut kvs = vec!();
                 loop {
                     let (k, v) = logger_values.head();
-                    if !clean {
-                        try!(ser.print_comma());
-                    }
-                    try!(v.serialize(record, k, &mut ser));
-                    clean = false;
+                    kvs.push((k, v));
+
                     logger_values = if let Some(v) = logger_values.tail() {
                         v
                     } else {
                         break;
                     }
+                }
+
+                for &(k, v) in kvs.iter().rev() {
+                    if !clean {
+                        try!(ser.print_comma());
+                    }
+                    try!(v.serialize(record, k, &mut ser));
+                    clean = false;
                 }
 
                 let (mut line, _) = ser.finish();

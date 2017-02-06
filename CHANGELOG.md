@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 1.5.0 - 2017-02-05
+### Change
+
+* Reverse the order of record values in full mode to match slog 1.5
+  definition
+
 ## 1.4.0 - 2017-01-29
 ### Changed
 
