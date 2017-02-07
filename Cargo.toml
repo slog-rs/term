@@ -19,3 +19,4 @@ slog-stream = { git="http://github.com/slog-rs/stream", branch = "2.x.y"}
 isatty = "0.1"
 chrono = "0.2"
 thread_local = "0.3"
+term  = "*"

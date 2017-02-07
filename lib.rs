@@ -18,6 +18,7 @@ extern crate slog_stream;
 extern crate isatty;
 extern crate chrono;
 extern crate thread_local;
+extern crate term;
 
 use std::{io, fmt, sync, cell};
 use std::io::Write;
@@ -342,19 +343,27 @@ fn severity_to_color(lvl: Level) -> u8 {
     }
 }
 
+/// Any type of a terminal supported by `term` crate
+pub enum AnyTerminal {
+    /// Stdout terminal
+    Stdout(Box<term::StdoutTerminal>),
+    /// Stderr terminal
+    Stderr(Box<term::StderrTerminal>),
+}
+
 /// Record decorator (color) for terminal output
-pub struct ColorDecorator {
-    use_color: bool,
+pub struct ColorDecorator{
+    term: Option<sync::Arc<sync::Mutex<AnyTerminal>>>,
 }
 
 impl ColorDecorator {
     /// New decorator that does color records
-    pub fn new_colored() -> Self {
-        ColorDecorator { use_color: true }
+    pub fn new_colored(t : AnyTerminal) -> Self {
+        ColorDecorator { term : Some(sync::Arc::new(sync::Mutex::new(t)))}
     }
     /// New decorator that does not color records
     pub fn new_plain() -> Self {
-        ColorDecorator { use_color: false }
+        ColorDecorator { term: None }
     }
 }
 
@@ -362,6 +371,7 @@ impl ColorDecorator {
 pub struct ColorRecordDecorator {
     level_color: Option<u8>,
     key_bold: bool,
+    term: Option<sync::Arc<sync::Mutex<AnyTerminal>>>,
 }
 
 
@@ -369,13 +379,15 @@ impl Decorator for ColorDecorator {
     type RecordDecorator = ColorRecordDecorator;
 
     fn decorate(&self, record: &Record) -> ColorRecordDecorator {
-        if self.use_color {
+        if let Some(ref term) = self.term {
             ColorRecordDecorator {
+                term: Some(term.clone()),
                 level_color: Some(severity_to_color(record.level())),
                 key_bold: true,
             }
         } else {
             ColorRecordDecorator {
+                term: None,
                 level_color: None,
                 key_bold: false,
             }
@@ -596,7 +608,7 @@ impl StreamerBuilder {
 
     /// Force plain output
     pub fn plain(mut self) -> Self {
-        self.color = Some(false);
+        self.color = None;
         self
     }
 
@@ -670,8 +682,26 @@ impl StreamerBuilder {
             stderr_isatty()
         });
 
+        let term : Option<AnyTerminal> = if let Some(use_color) = self.color {
+            if use_color {
+                if self.stdout {
+                    term::stdout().map(AnyTerminal::Stdout)
+                } else {
+                    term::stderr().map(AnyTerminal::Stderr)
+                }
+            } else {
+                None
+            }
+        } else {
+            if self.stdout {
+                term::stdout().map(AnyTerminal::Stdout)
+            } else {
+                term::stderr().map(AnyTerminal::Stderr)
+            }
+        };
+
         let format = Format::new(self.mode,
-                                 ColorDecorator { use_color: color },
+                                 ColorDecorator { term : term.map(sync::Mutex::new).map(sync::Arc::new) },
                                  self.fn_timestamp);
 
         let io = if self.stdout {
