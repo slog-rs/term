@@ -14,9 +14,8 @@ readme = "README.md"
 path = "lib.rs"
 
 [dependencies]
-slog = { git="http://github.com/slog-rs/slog", branch = "2.x.y" }
-slog-stream = { git="http://github.com/slog-rs/stream", branch = "2.x.y"}
+slog = "2.0.0-alpha1"
 isatty = "0.1"
-chrono = "0.2"
-thread_local = "0.3"
-term  = "*"
+chrono = "0.3"
+thread_local = "0.3.3"
+term = "0.4.5"

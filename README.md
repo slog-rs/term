@@ -18,6 +18,6 @@
   </a>
 </p>
 
-# slog-term  - Unix terminal drain for [slog-rs]
+# slog-term  - Terminal output drain for [slog-rs]
 
 [slog-rs]: //github.com/slog-rs/slog
