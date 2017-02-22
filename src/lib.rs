@@ -15,7 +15,8 @@
 //! use slog::*;
 //!
 //! fn main() {
-//!     let root = Logger::root(slog_term::Term::new().build().fuse(), o!());
+//!     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+//!     let root = Logger::root(slog_term::Term::new(plain).build().fuse(), o!());
 //! }
 //! ```
 // }}}
@@ -33,9 +34,9 @@ use slog::{OwnedKVList, KV, Record};
 use slog::Drain;
 
 use std::{io, fmt, sync};
+use std::cell::RefCell;
 use std::io::Write as IoWrite;
 use std::panic::{UnwindSafe, RefUnwindSafe};
-
 use std::result;
 // }}}
 
@@ -44,20 +45,23 @@ use std::result;
 ///
 /// Trait implementing strategy of output formating in terms of IO,
 /// colors, etc.
-pub trait Decorator: Send + Sync + UnwindSafe + RefUnwindSafe {
+pub trait Decorator {
     /// Get a `RecordDecorator` for a given `record`
     ///
     /// This allows `Decorator` to have on-stack data per processed `Record`s
-    fn decorate(&self,
-                record: &Record,
-                logger_values: &OwnedKVList)
-                -> Box<RecordDecorator>;
+    ///
+    fn with_record<F>(&self,
+                      _record: &Record,
+                      _logger_values: &OwnedKVList,
+                      f: F)
+                      -> io::Result<()>
+        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>;
 }
 
 /// Per-record decorator
 pub trait RecordDecorator: io::Write {
     /// Format normal text
-    fn start_text(&mut self) -> io::Result<()> {
+    fn start_whitespace(&mut self) -> io::Result<()> {
         Ok(())
     }
 
@@ -98,8 +102,8 @@ pub trait RecordDecorator: io::Write {
 }
 
 impl RecordDecorator for Box<RecordDecorator> {
-    fn start_text(&mut self) -> io::Result<()> {
-        (**self).start_text()
+    fn start_whitespace(&mut self) -> io::Result<()> {
+        (**self).start_whitespace()
     }
 
     /// Format `Record` message
@@ -149,20 +153,26 @@ pub enum FormatMode {
 
 // {{{ Term
 /// Terminal-output formatting `Drain`
-pub struct Term {
+pub struct Term<D>
+    where D: Decorator
+{
     mode: FormatMode,
-    decorator: Box<Decorator>,
+    decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
 
 /// Streamer builder
-pub struct TermBuilder {
+pub struct TermBuilder<D>
+    where D: Decorator
+{
     mode: FormatMode,
-    decorator: Box<Decorator>,
+    decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
 
-impl TermBuilder {
+impl<D> TermBuilder<D>
+    where D: Decorator
+{
     /// Output using full mode
     pub fn full(mut self) -> Self {
         self.mode = FormatMode::Full;
@@ -196,7 +206,7 @@ impl TermBuilder {
     }
 
     /// Build the streamer
-    pub fn build(self) -> Term {
+    pub fn build(self) -> Term<D> {
         Term {
             mode: self.mode,
             decorator: self.decorator,
@@ -206,7 +216,9 @@ impl TermBuilder {
 }
 
 
-impl Drain for Term {
+impl<D> Drain for Term<D>
+    where D: Decorator
+{
     type Ok = ();
     type Err = io::Error;
 
@@ -221,13 +233,15 @@ impl Drain for Term {
     }
 }
 
-impl Term {
+impl<D> Term<D>
+    where D: Decorator
+{
     /// New `TermBuilder`
-    pub fn new() -> TermBuilder {
+    pub fn new(d: D) -> TermBuilder<D> {
         TermBuilder {
             mode: FormatMode::Full,
             fn_timestamp: Box::new(timestamp_local),
-            decorator: Box::new(PlainDecorator::new(std::io::stderr())),
+            decorator: d,
         }
     }
 
@@ -236,24 +250,25 @@ impl Term {
                    values: &OwnedKVList)
                    -> io::Result<()> {
 
-        let mut decorator = self.decorator.decorate(record, values);
+        self.decorator.with_record(record, values, |decorator| {
 
+            let comma_needed = try!(self.print_msg_header(decorator, record));
+            {
+                let mut serializer = Serializer::new(decorator, comma_needed);
 
-        let comma_needed = try!(self.print_msg_header(&mut *decorator, record));
-        let mut serializer = Serializer::new(decorator, comma_needed);
+                try!(record.kv().serialize(record, &mut serializer));
 
-        try!(record.kv().serialize(record, &mut serializer));
+                try!(values.serialize(record, &mut serializer));
 
-        try!(values.serialize(record, &mut serializer));
+            }
 
-        let mut decorator = serializer.finish();
+            try!(decorator.start_whitespace());
+            try!(write!(decorator, "\n"));
 
-        try!(decorator.start_text());
-        try!(write!(decorator, "\n"));
+            try!(decorator.flush());
 
-        try!(decorator.flush());
-
-        Ok(())
+            Ok(())
+        })
     }
 
     /*
@@ -296,8 +311,14 @@ impl Term {
         try!(rd.start_timestamp());
         try!((self.fn_timestamp)(&mut rd));
 
+        try!(rd.start_whitespace());
+        try!(write!(rd, " "));
+
         try!(rd.start_level());
-        try!(write!(rd, " {} ", record.level().as_short_str()));
+        try!(write!(rd, "{}", record.level().as_short_str()));
+
+        try!(rd.start_whitespace());
+        try!(write!(rd, " "));
 
         try!(rd.start_msg());
         let mut count_rd = CountingWriter::new(&mut rd);
@@ -400,13 +421,13 @@ impl Term {
 // }}}
 
 // {{{ Serializer
-struct Serializer<D: RecordDecorator> {
+struct Serializer<'a> {
     comma_needed: bool,
-    decorator: D,
+    decorator: &'a mut RecordDecorator,
 }
 
-impl<D: RecordDecorator> Serializer<D> {
-    fn new(d: D, comma_needed: bool) -> Self {
+impl<'a> Serializer<'a> {
+    fn new(d: &'a mut RecordDecorator, comma_needed: bool) -> Self {
         Serializer {
             comma_needed: comma_needed,
             decorator: d,
@@ -420,10 +441,6 @@ impl<D: RecordDecorator> Serializer<D> {
             self.comma_needed |= true
         }
         Ok(())
-    }
-
-    fn finish(self) -> D {
-        self.decorator
     }
 }
 
@@ -441,7 +458,7 @@ macro_rules! s(
 );
 
 
-impl<D: RecordDecorator> slog::ser::Serializer for Serializer<D> {
+impl<'a> slog::ser::Serializer for Serializer<'a> {
     fn emit_none(&mut self, key: &str) -> slog::Result {
         s!(self, key, "None");
         Ok(())
@@ -602,39 +619,139 @@ pub fn timestamp_utc(io: &mut io::Write) -> io::Result<()> {
 // {{{ Plain
 
 /// Plain (no-op) `Decorator` implementation
-pub struct PlainDecorator<W>(sync::Arc<sync::Mutex<W>>) where W: io::Write;
+///
+/// This decorator doesn't do any coloring, and doesn't do any synchronization
+/// between threads, so is not `Sync`. It is however useful combined with
+/// `slog_async::Async` drain, as `slog_async::Async` uses only one thread,
+/// and thus requires only `Send` from `Drain`s it wraps.
+///
+/// ```
+/// #[macro_use]
+/// extern crate slog;
+/// extern crate slog_term;
+/// extern crate slog_async;
+///
+/// use slog::*;
+/// use slog_async::Async;
+///
+/// fn main() {
+///
+///    let decorator = slog_term::PlainDecorator::new(std::io::stdout());
+///    let drain = Async::new(slog_term::Term::new(decorator).build().fuse())
+///        .build()
+///        .fuse();
+/// }
+/// ```
+
+pub struct PlainDecorator<W>(RefCell<W>) where W: io::Write;
 
 impl<W> PlainDecorator<W>
     where W: io::Write
 {
     /// Create `PlainDecorator` instance
     pub fn new(io: W) -> Self {
-        PlainDecorator(sync::Arc::new(sync::Mutex::new(io)))
+        PlainDecorator(RefCell::new(io))
     }
 }
 
 impl<W> Decorator for PlainDecorator<W>
     where W: io::Write + Send + 'static
 {
-    fn decorate(&self,
-                _record: &Record,
-                _logger_values: &OwnedKVList)
-                -> Box<RecordDecorator> {
-        Box::new(PlainRecordDecorator {
+    fn with_record<F>(&self,
+                      _record: &Record,
+                      _logger_values: &OwnedKVList,
+                      f: F)
+                      -> io::Result<()>
+        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
+    {
+        f(&mut PlainRecordDecorator(&self.0))
+    }
+}
+
+/// Record decorator used by `PlainDecorator`
+pub struct PlainRecordDecorator<'a, W: 'a>(&'a RefCell<W>) where W: io::Write;
+
+impl<'a, W> io::Write for PlainRecordDecorator<'a, W>
+    where W: io::Write
+{
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.borrow_mut().write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.borrow_mut().flush()
+    }
+}
+
+impl<'a, W> Drop for PlainRecordDecorator<'a, W>
+    where W: io::Write
+{
+    fn drop(&mut self) {
+        let _ = self.flush();
+    }
+}
+
+impl<'a, W> RecordDecorator for PlainRecordDecorator<'a, W> where W: io::Write {}
+
+
+// }}}
+
+// {{{ PlainSync
+/// PlainSync `Decorator` implementation
+///
+/// This implementation is exactly like `PlainDecorator` but it takes care
+/// of synchronizing writes to `io`.
+///
+/// ```
+/// #[macro_use]
+/// extern crate slog;
+/// extern crate slog_term;
+///
+/// use slog::*;
+///
+/// fn main() {
+///     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+///     let root = Logger::root(slog_term::Term::new(plain).build().fuse(), o!());
+/// }
+/// ```
+
+pub struct PlainSyncDecorator<W>(sync::Arc<sync::Mutex<W>>) where W: io::Write;
+
+impl<W> PlainSyncDecorator<W>
+    where W: io::Write
+{
+    /// Create `PlainSyncDecorator` instance
+    pub fn new(io: W) -> Self {
+        PlainSyncDecorator(sync::Arc::new(sync::Mutex::new(io)))
+    }
+}
+
+impl<W> Decorator for PlainSyncDecorator<W>
+    where W: io::Write + Send + 'static
+{
+    fn with_record<F>(&self,
+                      _record: &Record,
+                      _logger_values: &OwnedKVList,
+                      f: F)
+                      -> io::Result<()>
+        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
+    {
+        f(&mut PlainSyncRecordDecorator {
             io: self.0.clone(),
             buf: vec![],
         })
     }
 }
 
-struct PlainRecordDecorator<W>
+/// `RecordDecorator` used by `PlainSyncDecorator`
+pub struct PlainSyncRecordDecorator<W>
     where W: io::Write
 {
     io: sync::Arc<sync::Mutex<W>>,
     buf: Vec<u8>,
 }
 
-impl<W> io::Write for PlainRecordDecorator<W>
+impl<W> io::Write for PlainSyncRecordDecorator<W>
     where W: io::Write
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -657,7 +774,7 @@ impl<W> io::Write for PlainRecordDecorator<W>
     }
 }
 
-impl<W> Drop for PlainRecordDecorator<W>
+impl<W> Drop for PlainSyncRecordDecorator<W>
     where W: io::Write
 {
     fn drop(&mut self) {
@@ -665,8 +782,9 @@ impl<W> Drop for PlainRecordDecorator<W>
     }
 }
 
-impl<W> RecordDecorator for PlainRecordDecorator<W> where W: io::Write {}
+impl<W> RecordDecorator for PlainSyncRecordDecorator<W> where W: io::Write {}
 
 
 // }}}
+
 // vim: foldmethod=marker foldmarker={{{,}}}
