@@ -33,7 +33,7 @@ extern crate term;
 use slog::{OwnedKVList, KV, Record};
 use slog::Drain;
 
-use std::{io, fmt, sync};
+use std::{io, fmt, sync, mem};
 use std::cell::RefCell;
 use std::io::Write as IoWrite;
 use std::panic::{UnwindSafe, RefUnwindSafe};
@@ -143,12 +143,27 @@ impl RecordDecorator for Box<RecordDecorator> {
 }
 // }}}
 
-/// Formatting mode
-pub enum FormatMode {
-    /// Compact logging format
-    Compact,
-    /// Full logging format
-    Full,
+/// Returns `true` if message was not empty
+fn print_msg_header(fn_timestamp: &ThreadSafeTimestampFn<Output = io::Result<()>>,
+                    mut rd: &mut RecordDecorator,
+                    record: &Record)
+                    -> io::Result<bool> {
+    try!(rd.start_timestamp());
+    try!(fn_timestamp(&mut rd));
+
+    try!(rd.start_whitespace());
+    try!(write!(rd, " "));
+
+    try!(rd.start_level());
+    try!(write!(rd, "{}", record.level().as_short_str()));
+
+    try!(rd.start_whitespace());
+    try!(write!(rd, " "));
+
+    try!(rd.start_msg());
+    let mut count_rd = CountingWriter::new(&mut rd);
+    try!(write!(count_rd, "{}", record.msg()));
+    Ok(count_rd.count() != 0)
 }
 
 // {{{ Term
@@ -156,7 +171,6 @@ pub enum FormatMode {
 pub struct Term<D>
     where D: Decorator
 {
-    mode: FormatMode,
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
@@ -165,7 +179,6 @@ pub struct Term<D>
 pub struct TermBuilder<D>
     where D: Decorator
 {
-    mode: FormatMode,
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
@@ -173,18 +186,111 @@ pub struct TermBuilder<D>
 impl<D> TermBuilder<D>
     where D: Decorator
 {
-    /// Output using full mode
-    pub fn full(mut self) -> Self {
-        self.mode = FormatMode::Full;
+    /// Use the UTC time zone for the timestamp
+    pub fn use_utc_timestamp(mut self) -> Self {
+        self.fn_timestamp = Box::new(timestamp_utc);
         self
     }
 
-    /// Output using compact mode (default)
-    pub fn compact(mut self) -> Self {
-        self.mode = FormatMode::Compact;
+    /// Use the local time zone for the timestamp (default)
+    pub fn use_local_timestamp(mut self) -> Self {
+        self.fn_timestamp = Box::new(timestamp_local);
         self
     }
 
+    /// Provide a custom function to generate the timestamp
+    pub fn use_custom_timestamp<F>(mut self, f: F) -> Self
+        where F: ThreadSafeTimestampFn
+    {
+        self.fn_timestamp = Box::new(f);
+        self
+    }
+
+    /// Build `Term`
+    pub fn build(self) -> Term<D> {
+        Term {
+            decorator: self.decorator,
+            fn_timestamp: self.fn_timestamp,
+        }
+    }
+}
+
+
+impl<D> Drain for Term<D>
+    where D: Decorator
+{
+    type Ok = ();
+    type Err = io::Error;
+
+    fn log(&self,
+           record: &Record,
+           values: &OwnedKVList)
+           -> result::Result<Self::Ok, Self::Err> {
+        self.format_full(record, values)
+    }
+}
+
+impl<D> Term<D>
+    where D: Decorator
+{
+    /// New `TermBuilder`
+    pub fn new(d: D) -> TermBuilder<D> {
+        TermBuilder {
+            fn_timestamp: Box::new(timestamp_local),
+            decorator: d,
+        }
+    }
+
+    fn format_full(&self,
+                   record: &Record,
+                   values: &OwnedKVList)
+                   -> io::Result<()> {
+
+        self.decorator.with_record(record, values, |decorator| {
+
+            let comma_needed =
+                try!(print_msg_header(&*self.fn_timestamp, decorator, record));
+            {
+                let mut serializer = Serializer::new(decorator, comma_needed);
+
+                try!(record.kv().serialize(record, &mut serializer));
+
+                try!(values.serialize(record, &mut serializer));
+
+            }
+
+            try!(decorator.start_whitespace());
+            try!(write!(decorator, "\n"));
+
+            try!(decorator.flush());
+
+            Ok(())
+        })
+    }
+}
+// }}}
+
+// {{{ Compact
+/// Terminal-output formatting `Drain`
+pub struct Compact<D>
+    where D: Decorator
+{
+    decorator: D,
+    history: RefCell<Vec<(Vec<u8>, Vec<u8>)>>,
+    fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
+}
+
+/// Streamer builder
+pub struct CompactBuilder<D>
+    where D: Decorator
+{
+    decorator: D,
+    fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
+}
+
+impl<D> CompactBuilder<D>
+    where D: Decorator
+{
     /// Use the UTC time zone for the timestamp
     pub fn use_utc_timestamp(mut self) -> Self {
         self.fn_timestamp = Box::new(timestamp_utc);
@@ -206,17 +312,17 @@ impl<D> TermBuilder<D>
     }
 
     /// Build the streamer
-    pub fn build(self) -> Term<D> {
-        Term {
-            mode: self.mode,
+    pub fn build(self) -> Compact<D> {
+        Compact {
             decorator: self.decorator,
             fn_timestamp: self.fn_timestamp,
+            history: RefCell::new(vec![]),
         }
     }
 }
 
 
-impl<D> Drain for Term<D>
+impl<D> Drain for Compact<D>
     where D: Decorator
 {
     type Ok = ();
@@ -226,40 +332,50 @@ impl<D> Drain for Term<D>
            record: &Record,
            values: &OwnedKVList)
            -> result::Result<Self::Ok, Self::Err> {
-        match self.mode {
-            FormatMode::Full => self.format_full(record, values),
-            FormatMode::Compact => Ok(()), // TODO: self.format_compact(record, values),
-        }
+        self.format_compact(record, values)
     }
 }
 
-impl<D> Term<D>
+impl<D> Compact<D>
     where D: Decorator
 {
     /// New `TermBuilder`
-    pub fn new(d: D) -> TermBuilder<D> {
-        TermBuilder {
-            mode: FormatMode::Full,
+    pub fn new(d: D) -> CompactBuilder<D> {
+        CompactBuilder {
             fn_timestamp: Box::new(timestamp_local),
             decorator: d,
         }
     }
 
-    fn format_full(&self,
-                   record: &Record,
-                   values: &OwnedKVList)
-                   -> io::Result<()> {
+    fn format_compact(&self,
+                      record: &Record,
+                      values: &OwnedKVList)
+                      -> io::Result<()> {
 
         self.decorator.with_record(record, values, |decorator| {
+            let indent = {
+                let mut history_ref = self.history.borrow_mut();
+                let mut serializer = CompactSerializer::new(decorator,
+                                                            &mut *history_ref);
 
-            let comma_needed = try!(self.print_msg_header(decorator, record));
+                try!(values.serialize(record, &mut serializer));
+
+                try!(serializer.finish())
+            };
+
+
+            decorator.start_whitespace()?;
+
+            for _ in 0..indent {
+                write!(decorator, " ")?;
+            }
+
+            let comma_needed =
+                try!(print_msg_header(&*self.fn_timestamp, decorator, record));
             {
                 let mut serializer = Serializer::new(decorator, comma_needed);
 
                 try!(record.kv().serialize(record, &mut serializer));
-
-                try!(values.serialize(record, &mut serializer));
-
             }
 
             try!(decorator.start_whitespace());
@@ -270,156 +386,8 @@ impl<D> Term<D>
             Ok(())
         })
     }
-
-    /*
-    fn format_compact(&self,
-                      io: &mut io::Write,
-                      record: &Record,
-                      logger_kvs: &OwnedKVList)
-                      -> io::Result<()> {
-
-
-        let mut iter = logger_kvs.iter_groups();
-        let kv = iter.next();
-        let indent = try!(self.format_recurse(io, record, kv, &mut iter));
-
-        try!(self.print_indent(io, indent));
-
-        let r_decorator = self.decorator.decorate(record);
-        let mut ser = Serializer::new(io, r_decorator);
-        let mut comma_needed =
-            try!(self.print_msg_header(ser.io, &mut ser.decorator, record));
-
-        for kv in record.kvs() {
-            if comma_needed {
-                try!(ser.print_comma());
-            }
-            try!(kv.serialize(record, &mut ser));
-            comma_needed |= true;
-        }
-        try!(write!(&mut ser.io, "\n"));
-
-        Ok(())
-    }
-    */
-
-    /// Returns `true` if message was not empty
-    fn print_msg_header(&self,
-                        mut rd: &mut RecordDecorator,
-                        record: &Record)
-                        -> io::Result<bool> {
-        try!(rd.start_timestamp());
-        try!((self.fn_timestamp)(&mut rd));
-
-        try!(rd.start_whitespace());
-        try!(write!(rd, " "));
-
-        try!(rd.start_level());
-        try!(write!(rd, "{}", record.level().as_short_str()));
-
-        try!(rd.start_whitespace());
-        try!(write!(rd, " "));
-
-        try!(rd.start_msg());
-        let mut count_rd = CountingWriter::new(&mut rd);
-        try!(write!(count_rd, "{}", record.msg()));
-        Ok(count_rd.count() != 0)
-    }
-
-    /*
-    fn print_indent(&self,
-                    io: &mut io::Write,
-                    indent: usize)
-                    -> io::Result<()> {
-        for _ in 0..indent {
-            try!(write!(io, "  "));
-        }
-        Ok(())
-    }
-    */
-
-    /*
-    // record in the history, and check if should print
-    // given set of values
-    fn should_print(&self, line: &[u8], indent: usize) -> bool {
-        let mut history = self.history.lock().unwrap();
-        if history.len() <= indent {
-            debug_assert_eq!(history.len(), indent);
-            history.push(line.into());
-            true
-        } else {
-            let should = history[indent] != line;
-            if should {
-                history[indent] = line.into();
-                history.truncate(indent + 1);
-            }
-            should
-        }
-    }
-    */
-
-    /*
-    /// Recursively format given `logger_values_ref`
-    ///
-    /// Returns it's indent level
-    fn format_recurse(&self,
-                      io : &mut io::Write,
-                      record: &slog::Record,
-                      kv : Option<&KV>,
-                      kv_iter: &mut slog::OwnedKVGroupIterator)
-                                    -> io::Result<usize> {
-        let (kv, indent) = if let Some(kv) = kv {
-            let next_kv = kv_iter.next();
-            (kv, try!(self.format_recurse(io, record, next_kv, kv_iter)))
-        } else {
-            return Ok(0);
-        };
-
-
-        let res : io::Result<()> = TL_BUF.with(|line| {
-            let mut line = line.borrow_mut();
-            line.clear();
-            let r_decorator = self.decorator.decorate(record);
-            let mut ser = Serializer::new(&mut *line, r_decorator);
-
-            try!(self.print_indent(&mut ser.io, indent));
-            let mut clean = true;
-            let mut kv  = kv;
-            let mut all_kvs = vec!();
-            loop {
-                kv = if let Some((v, rest)) = kv.split_first() {
-                    all_kvs.push(v);
-                    rest
-                } else {
-                    break;
-                }
-
-            }
-
-            for kv in all_kvs.iter().rev() {
-                if !clean {
-                    try!(ser.print_comma());
-                }
-                try!(kv.serialize(record, &mut ser));
-                clean = false;
-            }
-
-            let (mut line, _) = ser.finish();
-
-            if self.should_print(line, indent) {
-                try!(write!(line, "\n"));
-                try!(io.write_all(line));
-            }
-            Ok(())
-        });
-        try!(res);
-
-        Ok(indent + 1)
-    }
-    */
 }
 // }}}
-
 // {{{ Serializer
 struct Serializer<'a> {
     comma_needed: bool,
@@ -451,7 +419,9 @@ macro_rules! s(
         try!($s.decorator.start_key());
         try!(write!($s.decorator, "{}", $k));
         try!($s.decorator.start_separator());
-        try!(write!($s.decorator, ": "));
+        try!(write!($s.decorator, ":"));
+        try!($s.decorator.start_whitespace());
+        try!(write!($s.decorator, " "));
         try!($s.decorator.start_value());
         try!(write!($s.decorator, "{}", $v));
     };
@@ -536,6 +506,174 @@ impl<'a> slog::ser::Serializer for Serializer<'a> {
                       val: &fmt::Arguments)
                       -> slog::Result {
         s!(self, key, val);
+        Ok(())
+    }
+}
+// }}}
+
+// {{{ CompactSerializer
+
+struct CompactSerializer<'a> {
+    decorator: &'a mut RecordDecorator,
+    history: &'a mut Vec<(Vec<u8>, Vec<u8>)>,
+    buf: Vec<(Vec<u8>, Vec<u8>)>,
+}
+
+impl<'a> CompactSerializer<'a> {
+    fn new(d: &'a mut RecordDecorator,
+           history: &'a mut Vec<(Vec<u8>, Vec<u8>)>)
+           -> Self {
+        CompactSerializer {
+            decorator: d,
+            history: history,
+            buf: vec![],
+        }
+    }
+
+    fn finish(&mut self) -> io::Result<usize> {
+        let mut indent = 0;
+
+        for mut buf in self.buf.drain(..).rev() {
+
+            let (print, trunc, push) = if let Some(prev) = self.history
+                .get_mut(indent) {
+                if *prev != buf {
+                    *prev = mem::replace(&mut buf, (vec![], vec![]));
+                    (true, true, false)
+                } else {
+                    (false, false, false)
+                }
+            } else {
+                (true, false, true)
+            };
+
+            if push {
+                self.history
+                    .push(mem::replace(&mut buf, (vec![], vec![])));
+
+            }
+
+            if trunc {
+                self.history.truncate(indent + 1);
+            }
+
+            if print {
+                let &(ref k, ref v) =
+                    self.history.get(indent).expect("assertion failed");
+                try!(self.decorator.start_whitespace());
+                for _ in 0..indent {
+                    try!(write!(self.decorator, " "));
+                }
+                try!(self.decorator.start_key());
+                try!(self.decorator.write_all(k));
+                try!(self.decorator.start_separator());
+                try!(write!(self.decorator, ":"));
+                try!(self.decorator.start_whitespace());
+                try!(write!(self.decorator, " "));
+                try!(self.decorator.start_value());
+                try!(self.decorator.write_all(v));
+
+                try!(self.decorator.start_whitespace());
+                try!(write!(self.decorator, "\n"));
+            }
+
+            indent += 1;
+        }
+
+        Ok(indent)
+    }
+}
+
+macro_rules! cs(
+    ($s:expr, $k:expr, $v:expr) => {
+
+        let mut k = vec!();
+        let mut v = vec!();
+        try!(write!(&mut k, "{}", $k));
+        try!(write!(&mut v, "{}", $v));
+        $s.buf.push((k, v));
+    };
+);
+
+
+impl<'a> slog::ser::Serializer for CompactSerializer<'a> {
+    fn emit_none(&mut self, key: &str) -> slog::Result {
+        cs!(self, key, "None");
+        Ok(())
+    }
+    fn emit_unit(&mut self, key: &str) -> slog::Result {
+        cs!(self, key, "()");
+        Ok(())
+    }
+
+    fn emit_bool(&mut self, key: &str, val: bool) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+
+    fn emit_char(&mut self, key: &str, val: char) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+
+    fn emit_usize(&mut self, key: &str, val: usize) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_isize(&mut self, key: &str, val: isize) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+
+    fn emit_u8(&mut self, key: &str, val: u8) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_i8(&mut self, key: &str, val: i8) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_u16(&mut self, key: &str, val: u16) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_i16(&mut self, key: &str, val: i16) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_u32(&mut self, key: &str, val: u32) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_i32(&mut self, key: &str, val: i32) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_f32(&mut self, key: &str, val: f32) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_u64(&mut self, key: &str, val: u64) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_i64(&mut self, key: &str, val: i64) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_f64(&mut self, key: &str, val: f64) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_str(&mut self, key: &str, val: &str) -> slog::Result {
+        cs!(self, key, val);
+        Ok(())
+    }
+    fn emit_arguments(&mut self,
+                      key: &str,
+                      val: &fmt::Arguments)
+                      -> slog::Result {
+        cs!(self, key, val);
         Ok(())
     }
 }
