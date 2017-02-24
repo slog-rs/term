@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 2.0.0-alpha1 - 2017-02-23
+### Changed
+
+* Full rewrite, without `slog-stream` support
+* Use `term` so should work on Linux and Windows shells out of the box
+* Allow extending (eg. for `termion` and other terminal crates)
+* Compact mode now prints one value per line. Groups are not exposed by `slog`
+  anymore.
+
 ## 1.5.0 - 2017-02-05
 ### Change
 

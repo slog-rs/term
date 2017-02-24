@@ -1,4 +1,4 @@
-// {{{ Module docs.
+// {{{ Module docs
 //! `slog-rs`'a `Drain` for terminal output
 //!
 //! This crate implements output formatting targeting logging to
@@ -149,6 +149,7 @@ impl RecordDecorator for Box<RecordDecorator> {
 }
 // }}}
 
+// {{{ Misc
 /// Returns `true` if message was not empty
 fn print_msg_header(fn_timestamp: &ThreadSafeTimestampFn<Output = io::Result<()>>,
                     mut rd: &mut RecordDecorator,
@@ -171,6 +172,8 @@ fn print_msg_header(fn_timestamp: &ThreadSafeTimestampFn<Output = io::Result<()>
     try!(write!(count_rd, "{}", record.msg()));
     Ok(count_rd.count() != 0)
 }
+
+// }}}
 
 // {{{ Term
 /// Terminal-output formatting `Drain`
@@ -394,6 +397,7 @@ impl<D> CompactFormat<D>
     }
 }
 // }}}
+
 // {{{ Serializer
 struct Serializer<'a> {
     comma_needed: bool,
@@ -946,6 +950,7 @@ impl<W> RecordDecorator for PlainSyncRecordDecorator<W>
 // {{{ TermDecorator
 
 /// Any type of a terminal supported by `term` crate
+// TODO: https://github.com/Stebalien/term/issues/70
 enum AnyTerminal {
     /// Stdout terminal
     Stdout(Box<term::StdoutTerminal>),
@@ -980,6 +985,12 @@ impl TermDecoratorBuilder {
 }
 
 /// `Decorator` implemented using `term` crate
+///
+/// This decorator will add nice formatting to the logs it's outputting. It's
+/// based on `term` crate.
+///
+/// It does not deal with serialization so is `!Sync`. Run in a separate thread
+/// with `slog_async::Async`.
 pub struct TermDecorator(RefCell<AnyTerminal>);
 
 impl TermDecorator {
@@ -1095,4 +1106,5 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
 }
 
 // }}}
+
 // vim: foldmethod=marker foldmarker={{{,}}}
