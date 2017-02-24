@@ -11,11 +11,11 @@ repository = "https://github.com/slog-rs/term"
 readme = "README.md"
 
 [dependencies]
-slog = "2.0.0-alpha1"
+slog = "2.0.0-alpha2"
 isatty = "0.1"
 chrono = "0.3"
 thread_local = "0.3.3"
 term = "0.4.5"
 
 [dev-dependencies]
-slog-async = "0.2.0-alpha1"
+slog-async = "0.2.0-alpha2"

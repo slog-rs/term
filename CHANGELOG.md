@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## 2.0.0-alpha1 - 2017-02-23
 ### Changed
 
-* Full rewrite, without `slog-stream` support
+* Full rewrite, ditch `slog-stream`
 * Use `term` so should work on Linux and Windows shells out of the box
 * Allow extending (eg. for `termion` and other terminal crates)
 * Compact mode now prints one value per line. Groups are not exposed by `slog`
