@@ -16,7 +16,7 @@
 //!
 //! fn main() {
 //!     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
-//!     let root = Logger::root(slog_term::Term::new(plain).build().fuse(), o!());
+//!     let root = Logger::root(slog_term::FullFormat::new(plain).build().fuse(), o!());
 //! }
 //! ```
 // }}}
@@ -30,7 +30,7 @@ extern crate chrono;
 extern crate thread_local;
 extern crate term;
 
-use slog::{OwnedKVList, KV, Record};
+use slog::*;
 use slog::Drain;
 
 use std::{io, fmt, sync, mem};
@@ -174,7 +174,7 @@ fn print_msg_header(fn_timestamp: &ThreadSafeTimestampFn<Output = io::Result<()>
 
 // {{{ Term
 /// Terminal-output formatting `Drain`
-pub struct Term<D>
+pub struct FullFormat<D>
     where D: Decorator
 {
     decorator: D,
@@ -182,14 +182,14 @@ pub struct Term<D>
 }
 
 /// Streamer builder
-pub struct TermBuilder<D>
+pub struct FullFormatBuilder<D>
     where D: Decorator
 {
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
 
-impl<D> TermBuilder<D>
+impl<D> FullFormatBuilder<D>
     where D: Decorator
 {
     /// Use the UTC time zone for the timestamp
@@ -212,9 +212,9 @@ impl<D> TermBuilder<D>
         self
     }
 
-    /// Build `Term`
-    pub fn build(self) -> Term<D> {
-        Term {
+    /// Build `FullFormat`
+    pub fn build(self) -> FullFormat<D> {
+        FullFormat {
             decorator: self.decorator,
             fn_timestamp: self.fn_timestamp,
         }
@@ -222,7 +222,7 @@ impl<D> TermBuilder<D>
 }
 
 
-impl<D> Drain for Term<D>
+impl<D> Drain for FullFormat<D>
     where D: Decorator
 {
     type Ok = ();
@@ -236,12 +236,12 @@ impl<D> Drain for Term<D>
     }
 }
 
-impl<D> Term<D>
+impl<D> FullFormat<D>
     where D: Decorator
 {
     /// New `TermBuilder`
-    pub fn new(d: D) -> TermBuilder<D> {
-        TermBuilder {
+    pub fn new(d: D) -> FullFormatBuilder<D> {
+        FullFormatBuilder {
             fn_timestamp: Box::new(timestamp_local),
             decorator: d,
         }
@@ -276,9 +276,9 @@ impl<D> Term<D>
 }
 // }}}
 
-// {{{ Compact
-/// Terminal-output formatting `Drain`
-pub struct Compact<D>
+// {{{ CompactFormat
+/// Compact terminal-output formatting `Drain`
+pub struct CompactFormat<D>
     where D: Decorator
 {
     decorator: D,
@@ -287,14 +287,14 @@ pub struct Compact<D>
 }
 
 /// Streamer builder
-pub struct CompactBuilder<D>
+pub struct CompactFormatBuilder<D>
     where D: Decorator
 {
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
 
-impl<D> CompactBuilder<D>
+impl<D> CompactFormatBuilder<D>
     where D: Decorator
 {
     /// Use the UTC time zone for the timestamp
@@ -318,8 +318,8 @@ impl<D> CompactBuilder<D>
     }
 
     /// Build the streamer
-    pub fn build(self) -> Compact<D> {
-        Compact {
+    pub fn build(self) -> CompactFormat<D> {
+        CompactFormat {
             decorator: self.decorator,
             fn_timestamp: self.fn_timestamp,
             history: RefCell::new(vec![]),
@@ -328,7 +328,7 @@ impl<D> CompactBuilder<D>
 }
 
 
-impl<D> Drain for Compact<D>
+impl<D> Drain for CompactFormat<D>
     where D: Decorator
 {
     type Ok = ();
@@ -342,12 +342,12 @@ impl<D> Drain for Compact<D>
     }
 }
 
-impl<D> Compact<D>
+impl<D> CompactFormat<D>
     where D: Decorator
 {
-    /// New `TermBuilder`
-    pub fn new(d: D) -> CompactBuilder<D> {
-        CompactBuilder {
+    /// New `CompactFormatBuilder`
+    pub fn new(d: D) -> CompactFormatBuilder<D> {
+        CompactFormatBuilder {
             fn_timestamp: Box::new(timestamp_local),
             decorator: d,
         }
@@ -361,8 +361,8 @@ impl<D> Compact<D>
         self.decorator.with_record(record, values, |decorator| {
             let indent = {
                 let mut history_ref = self.history.borrow_mut();
-                let mut serializer = CompactSerializer::new(decorator,
-                                                            &mut *history_ref);
+                let mut serializer =
+                    CompactFormatSerializer::new(decorator, &mut *history_ref);
 
                 try!(values.serialize(record, &mut serializer));
 
@@ -517,19 +517,19 @@ impl<'a> slog::ser::Serializer for Serializer<'a> {
 }
 // }}}
 
-// {{{ CompactSerializer
+// {{{ CompactFormatSerializer
 
-struct CompactSerializer<'a> {
+struct CompactFormatSerializer<'a> {
     decorator: &'a mut RecordDecorator,
     history: &'a mut Vec<(Vec<u8>, Vec<u8>)>,
     buf: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
-impl<'a> CompactSerializer<'a> {
+impl<'a> CompactFormatSerializer<'a> {
     fn new(d: &'a mut RecordDecorator,
            history: &'a mut Vec<(Vec<u8>, Vec<u8>)>)
            -> Self {
-        CompactSerializer {
+        CompactFormatSerializer {
             decorator: d,
             history: history,
             buf: vec![],
@@ -602,7 +602,7 @@ macro_rules! cs(
 );
 
 
-impl<'a> slog::ser::Serializer for CompactSerializer<'a> {
+impl<'a> slog::ser::Serializer for CompactFormatSerializer<'a> {
     fn emit_none(&mut self, key: &str) -> slog::Result {
         cs!(self, key, "None");
         Ok(())
@@ -781,7 +781,7 @@ pub fn timestamp_utc(io: &mut io::Write) -> io::Result<()> {
 /// fn main() {
 ///
 ///    let decorator = slog_term::PlainDecorator::new(std::io::stdout());
-///    let drain = Async::new(slog_term::Term::new(decorator).build().fuse())
+///    let drain = Async::new(slog_term::FullFormat::new(decorator).build().fuse())
 ///        .build()
 ///        .fuse();
 /// }
@@ -861,7 +861,7 @@ impl<'a, W> RecordDecorator for PlainRecordDecorator<'a, W>
 ///
 /// fn main() {
 ///     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
-///     let root = Logger::root(slog_term::Term::new(plain).build().fuse(), o!());
+///     let root = Logger::root(slog_term::FullFormat::new(plain).build().fuse(), o!());
 /// }
 /// ```
 
@@ -943,4 +943,156 @@ impl<W> RecordDecorator for PlainSyncRecordDecorator<W>
 
 // }}}
 
+// {{{ TermDecorator
+
+/// Any type of a terminal supported by `term` crate
+enum AnyTerminal {
+    /// Stdout terminal
+    Stdout(Box<term::StdoutTerminal>),
+    /// Stderr terminal
+    Stderr(Box<term::StderrTerminal>),
+}
+
+/// `TermDecorator` builder
+pub struct TermDecoratorBuilder(AnyTerminal);
+
+impl TermDecoratorBuilder {
+    fn new() -> Self {
+        TermDecoratorBuilder(AnyTerminal::Stderr(term::stderr().unwrap()))
+    }
+
+    /// Output to `stderr`
+    pub fn stderr(mut self) -> Self {
+        self.0 = AnyTerminal::Stderr(term::stderr().unwrap());
+        self
+    }
+
+    /// Output to `stdout`
+    pub fn stdout(mut self) -> Self {
+        self.0 = AnyTerminal::Stdout(term::stdout().unwrap());
+        self
+    }
+
+    /// Build `TermDecorator`
+    pub fn build(self) -> TermDecorator {
+        TermDecorator(RefCell::new(self.0))
+    }
+}
+
+/// `Decorator` implemented using `term` crate
+pub struct TermDecorator(RefCell<AnyTerminal>);
+
+impl TermDecorator {
+    /// Start building `TermDecorator`
+    pub fn new() -> TermDecoratorBuilder {
+        TermDecoratorBuilder::new()
+    }
+
+
+    /// `Level` color
+    ///
+    /// Standard level to Unix color conversion used by `TermDecorator`
+    pub fn level_to_color(level: slog::Level) -> u16 {
+        match level {
+            Level::Critical => 5,
+            Level::Error => 1,
+            Level::Warning => 3,
+            Level::Info => 2,
+            Level::Debug => 6,
+            Level::Trace => 4,
+        }
+    }
+}
+
+impl Decorator for TermDecorator {
+    fn with_record<F>(&self,
+                      record: &Record,
+                      _logger_values: &OwnedKVList,
+                      f: F)
+                      -> io::Result<()>
+        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
+    {
+        let mut term = self.0.borrow_mut();
+        let mut deco = TermRecordDecorator {
+            term: &mut *term,
+            level: record.level(),
+        };
+        {
+            f(&mut deco)
+        }
+    }
+}
+
+/// Record decorator used by `TermDecorator`
+pub struct TermRecordDecorator<'a> {
+    term: &'a mut AnyTerminal,
+    level: slog::Level,
+}
+
+impl<'a> io::Write for TermRecordDecorator<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self.term {
+            &mut AnyTerminal::Stdout(ref mut term) => term.write(buf),
+            &mut AnyTerminal::Stderr(ref mut term) => term.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self.term {
+            &mut AnyTerminal::Stdout(ref mut term) => term.flush(),
+            &mut AnyTerminal::Stderr(ref mut term) => term.flush(),
+        }
+    }
+}
+
+impl<'a> Drop for TermRecordDecorator<'a> {
+    fn drop(&mut self) {
+        let _ = self.flush();
+    }
+}
+
+fn term_error_to_io_error(e: term::Error) -> io::Error {
+    match e {
+        term::Error::Io(e) => e,
+        e => io::Error::new(io::ErrorKind::Other, format!("term error: {}", e)),
+    }
+}
+
+impl<'a> RecordDecorator for TermRecordDecorator<'a> {
+    fn reset(&mut self) -> io::Result<()> {
+        match self.term {
+                &mut AnyTerminal::Stdout(ref mut term) => term.reset(),
+                &mut AnyTerminal::Stderr(ref mut term) => term.reset(),
+            }
+            .map_err(term_error_to_io_error)
+    }
+
+    fn start_level(&mut self) -> io::Result<()> {
+        let color = TermDecorator::level_to_color(self.level);
+        match self.term {
+                &mut AnyTerminal::Stdout(ref mut term) => term.fg(color),
+                &mut AnyTerminal::Stderr(ref mut term) => term.fg(color),
+            }
+            .map_err(term_error_to_io_error)
+    }
+
+    fn start_key(&mut self) -> io::Result<()> {
+        match self.term {
+                &mut AnyTerminal::Stdout(ref mut term) => {
+                    term.attr(term::Attr::Bold)
+                }
+                &mut AnyTerminal::Stderr(ref mut term) => {
+                    term.attr(term::Attr::Bold)
+                }
+            }
+            .map_err(term_error_to_io_error)
+    }
+
+    fn start_msg(&mut self) -> io::Result<()> {
+        // msg is just like key
+        self.start_key()
+    }
+}
+
+// }}}
 // vim: foldmethod=marker foldmarker={{{,}}}
