@@ -60,48 +60,54 @@ pub trait Decorator {
 
 /// Per-record decorator
 pub trait RecordDecorator: io::Write {
+    /// Reset formatting to defaults
+    fn reset(&mut self) -> io::Result<()>;
+
     /// Format normal text
     fn start_whitespace(&mut self) -> io::Result<()> {
-        Ok(())
+        self.reset()
     }
 
     /// Format `Record` message
     fn start_msg(&mut self) -> io::Result<()> {
-        Ok(())
+        self.reset()
     }
 
     /// Format timestamp
     fn start_timestamp(&mut self) -> io::Result<()> {
-        Ok(())
+        self.reset()
     }
 
     /// Format `Record` level
     fn start_level(&mut self) -> io::Result<()> {
-        Ok(())
+        self.reset()
     }
 
-    /// Format `Record` message
+    /// Format a comma between key-value pairs
     fn start_comma(&mut self) -> io::Result<()> {
-        Ok(())
+        self.reset()
     }
 
     /// Format key
     fn start_key(&mut self) -> io::Result<()> {
-        Ok(())
+        self.reset()
     }
 
-    /// Format value
+    /// Format a value
     fn start_value(&mut self) -> io::Result<()> {
-        Ok(())
+        self.reset()
     }
 
     /// Format value
     fn start_separator(&mut self) -> io::Result<()> {
-        Ok(())
+        self.reset()
     }
 }
 
 impl RecordDecorator for Box<RecordDecorator> {
+    fn reset(&mut self) -> io::Result<()> {
+        (**self).reset()
+    }
     fn start_whitespace(&mut self) -> io::Result<()> {
         (**self).start_whitespace()
     }
@@ -829,7 +835,13 @@ impl<'a, W> Drop for PlainRecordDecorator<'a, W>
     }
 }
 
-impl<'a, W> RecordDecorator for PlainRecordDecorator<'a, W> where W: io::Write {}
+impl<'a, W> RecordDecorator for PlainRecordDecorator<'a, W>
+    where W: io::Write
+{
+    fn reset(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 
 // }}}
@@ -920,7 +932,13 @@ impl<W> Drop for PlainSyncRecordDecorator<W>
     }
 }
 
-impl<W> RecordDecorator for PlainSyncRecordDecorator<W> where W: io::Write {}
+impl<W> RecordDecorator for PlainSyncRecordDecorator<W>
+    where W: io::Write
+{
+    fn reset(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 
 // }}}
