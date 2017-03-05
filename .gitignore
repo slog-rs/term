@@ -1,4 +1,5 @@
-target
-Cargo.lock
+/target
+/Cargo.lock
 /tags
-.cargo
+/.cargo
+/rusty-tags.vi
