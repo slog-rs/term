@@ -1086,7 +1086,7 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
             }
             .map_err(term_error_to_io_error)
     }
-    
+
     fn start_key(&mut self) -> io::Result<()> {
         match self.term {
                 &mut AnyTerminal::Stdout(ref mut term) => {
