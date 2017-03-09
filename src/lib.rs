@@ -931,6 +931,7 @@ impl<W> io::Write for PlainSyncRecordDecorator<W>
             }));
 
         try!(io.write_all(&self.buf));
+        self.buf.clear();
         io.flush()
     }
 }
