@@ -16,7 +16,10 @@
 //!
 //! fn main() {
 //!     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
-//!     let root = Logger::root(slog_term::FullFormat::new(plain).build().fuse(), o!());
+//!     let root = Logger::root(
+//!         slog_term::FullFormat::new(plain)
+//!         .build().fuse(), o!()
+//!     );
 //! }
 //! ```
 // }}}
@@ -151,10 +154,10 @@ impl RecordDecorator for Box<RecordDecorator> {
 
 // {{{ Misc
 /// Returns `true` if message was not empty
-fn print_msg_header(fn_timestamp: &ThreadSafeTimestampFn<Output = io::Result<()>>,
-                    mut rd: &mut RecordDecorator,
-                    record: &Record)
-                    -> io::Result<bool> {
+fn print_msg_header(fn_timestamp: &ThreadSafeTimestampFn<Output =
+                    io::Result<()>>, mut rd: &mut RecordDecorator, record:
+                    &Record)
+-> io::Result<bool>{
     try!(rd.start_timestamp());
     try!(fn_timestamp(&mut rd));
 
@@ -545,8 +548,8 @@ impl<'a> CompactFormatSerializer<'a> {
 
         for mut buf in self.buf.drain(..).rev() {
 
-            let (print, trunc, push) = if let Some(prev) = self.history
-                .get_mut(indent) {
+            let (print, trunc, push) = if let Some(prev) =
+                self.history.get_mut(indent) {
                 if *prev != buf {
                     *prev = mem::replace(&mut buf, (vec![], vec![]));
                     (true, true, false)
@@ -558,8 +561,7 @@ impl<'a> CompactFormatSerializer<'a> {
             };
 
             if push {
-                self.history
-                    .push(mem::replace(&mut buf, (vec![], vec![])));
+                self.history.push(mem::replace(&mut buf, (vec![], vec![])));
 
             }
 
@@ -712,9 +714,9 @@ impl<'a> CountingWriter<'a> {
 impl<'a> io::Write for CountingWriter<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.wrapped.write(buf).map(|n| {
-            self.count += n;
-            n
-        })
+                                        self.count += n;
+                                        n
+                                    })
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -723,9 +725,9 @@ impl<'a> io::Write for CountingWriter<'a> {
 
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         self.wrapped.write_all(buf).map(|_| {
-            self.count += buf.len();
-            ()
-        })
+                                            self.count += buf.len();
+                                            ()
+                                        })
     }
 }
 // }}}
@@ -737,7 +739,8 @@ impl<'a> io::Write for CountingWriter<'a> {
 /// bounds expressed by this trait need to satisfied for a function
 /// to be used in timestamp formatting.
 pub trait ThreadSafeTimestampFn
-    : Fn(&mut io::Write) -> io::Result<()> + Send + Sync + UnwindSafe + RefUnwindSafe + 'static {
+    : Fn(&mut io::Write) ->
+    io::Result<()> + Send + Sync + UnwindSafe + RefUnwindSafe + 'static {
 }
 
 impl<F> ThreadSafeTimestampFn for F
@@ -785,7 +788,9 @@ pub fn timestamp_utc(io: &mut io::Write) -> io::Result<()> {
 /// fn main() {
 ///
 ///    let decorator = slog_term::PlainDecorator::new(std::io::stdout());
-///    let drain = Async::new(slog_term::FullFormat::new(decorator).build().fuse())
+///    let drain = Async::new(
+///            slog_term::FullFormat::new(decorator).build().fuse()
+///        )
 ///        .build()
 ///        .fuse();
 /// }
@@ -865,7 +870,9 @@ impl<'a, W> RecordDecorator for PlainRecordDecorator<'a, W>
 ///
 /// fn main() {
 ///     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
-///     let root = Logger::root(slog_term::FullFormat::new(plain).build().fuse(), o!());
+///     let root = Logger::root(
+///         slog_term::FullFormat::new(plain).build().fuse(), o!()
+///     );
 /// }
 /// ```
 
@@ -891,9 +898,9 @@ impl<W> Decorator for PlainSyncDecorator<W>
         where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
     {
         f(&mut PlainSyncRecordDecorator {
-            io: self.0.clone(),
-            buf: vec![],
-        })
+                   io: self.0.clone(),
+                   buf: vec![],
+               })
     }
 }
 
