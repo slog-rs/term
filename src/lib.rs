@@ -1090,10 +1090,18 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
     fn start_key(&mut self) -> io::Result<()> {
         match self.term {
                 &mut AnyTerminal::Stdout(ref mut term) => {
-                    term.attr(term::Attr::Bold)
+                    if term.supports_attr(term::Attr::Bold) {
+                        term.attr(term::Attr::Bold)
+                    } else {
+                        term.fg(term::color::BRIGHT_WHITE)
+                    }
                 }
                 &mut AnyTerminal::Stderr(ref mut term) => {
-                    term.attr(term::Attr::Bold)
+                    if term.supports_attr(term::Attr::Bold) {
+                        term.attr(term::Attr::Bold)
+                    } else {
+                        term.fg(term::color::BRIGHT_WHITE)
+                    }
                 }
             }
             .map_err(term_error_to_io_error)
