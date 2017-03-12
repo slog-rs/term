@@ -13,5 +13,5 @@ fn main() {
 
     let log = slog::Logger::root(Arc::new(drain), o!("version" => "0.5"));
 
-    common::simulate_server(log.to_erased());
+    common::simulate_server(log);
 }
