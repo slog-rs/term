@@ -9,7 +9,7 @@ use std::sync::Arc;
 mod common;
 
 fn main() {
-    let decorator = slog_term::TermDecorator::new().build();
+    let decorator = slog_term::TermDecorator::new().build().unwrap();
     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
     let drain = slog_async::Async::new(drain).build().fuse();
 

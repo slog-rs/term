@@ -16,6 +16,7 @@ isatty = "0.1"
 chrono = "0.3"
 thread_local = "0.3.3"
 term = "0.4.5"
+error-chain = "0.10.0"
 
 [dev-dependencies]
 slog-async = "~2.0.0-2"
