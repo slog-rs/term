@@ -967,26 +967,40 @@ enum AnyTerminal {
 }
 
 /// `TermDecorator` builder
-pub struct TermDecoratorBuilder(AnyTerminal);
+pub struct TermDecoratorBuilder(Option<AnyTerminal>);
 
 impl TermDecoratorBuilder {
     fn new() -> Self {
-        TermDecoratorBuilder(AnyTerminal::Stderr(term::stderr().unwrap()))
+        TermDecoratorBuilder(term::stderr().map(AnyTerminal::Stderr))
     }
 
     /// Output to `stderr`
     pub fn stderr(mut self) -> Self {
-        self.0 = AnyTerminal::Stderr(term::stderr().unwrap());
+        self.0 = term::stderr().map(AnyTerminal::Stderr);
         self
     }
 
     /// Output to `stdout`
     pub fn stdout(mut self) -> Self {
-        self.0 = AnyTerminal::Stdout(term::stdout().unwrap());
+        self.0 = term::stdout().map(AnyTerminal::Stdout);
         self
     }
 
     /// Build `TermDecorator`
+    ///
+    /// Return `None` if requested output was not usable (eg. closed stderr)
+    pub fn try_build(self) -> Option<TermDecorator> {
+        if let Some(io) = self.0 {
+            Some(TermDecorator(RefCell::new(Some(io))))
+        } else {
+            None
+        }
+    }
+
+    /// Build `TermDecorator`
+    ///
+    /// If requested output was not usable (eg. closed stderr), it will return
+    /// `TermDecorator` that discards logging records.
     pub fn build(self) -> TermDecorator {
         TermDecorator(RefCell::new(self.0))
     }
@@ -999,7 +1013,7 @@ impl TermDecoratorBuilder {
 ///
 /// It does not deal with serialization so is `!Sync`. Run in a separate thread
 /// with `slog_async::Async`.
-pub struct TermDecorator(RefCell<AnyTerminal>);
+pub struct TermDecorator(RefCell<Option<AnyTerminal>>);
 
 impl TermDecorator {
     /// Start building `TermDecorator`
@@ -1032,12 +1046,16 @@ impl Decorator for TermDecorator {
         where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
     {
         let mut term = self.0.borrow_mut();
-        let mut deco = TermRecordDecorator {
-            term: &mut *term,
-            level: record.level(),
-        };
-        {
-            f(&mut deco)
+        if let Some(mut term) = term.as_mut() {
+            let mut deco = TermRecordDecorator {
+                term: term,
+                level: record.level(),
+            };
+            {
+                f(&mut deco)
+            }
+        } else {
+            Ok(())
         }
     }
 }
