@@ -967,22 +967,40 @@ enum AnyTerminal {
 }
 
 /// `TermDecorator` builder
-pub struct TermDecoratorBuilder(Option<AnyTerminal>);
+pub struct TermDecoratorBuilder {
+    term: Option<AnyTerminal>,
+    color: Option<bool>,
+}
 
 impl TermDecoratorBuilder {
     fn new() -> Self {
-        TermDecoratorBuilder(term::stderr().map(AnyTerminal::Stderr))
+        TermDecoratorBuilder {
+            term: term::stderr().map(AnyTerminal::Stderr),
+            color: None,
+        }
     }
 
     /// Output to `stderr`
     pub fn stderr(mut self) -> Self {
-        self.0 = term::stderr().map(AnyTerminal::Stderr);
+        self.term = term::stderr().map(AnyTerminal::Stderr);
         self
     }
 
     /// Output to `stdout`
     pub fn stdout(mut self) -> Self {
-        self.0 = term::stdout().map(AnyTerminal::Stdout);
+        self.term = term::stdout().map(AnyTerminal::Stdout);
+        self
+    }
+
+    /// Force colored output
+    pub fn force_color(mut self) -> Self {
+        self.color = Some(true);
+        self
+    }
+
+    /// Force colored output
+    pub fn force_plain(mut self) -> Self {
+        self.color = Some(false);
         self
     }
 
@@ -990,8 +1008,12 @@ impl TermDecoratorBuilder {
     ///
     /// Return `None` if requested output was not usable (eg. closed stderr)
     pub fn try_build(self) -> Option<TermDecorator> {
-        if let Some(io) = self.0 {
-            Some(TermDecorator(RefCell::new(Some(io))))
+        let use_color = self.should_use_color();
+        if let Some(io) = self.term {
+            Some(TermDecorator {
+                     term: RefCell::new(Some(io)),
+                     use_color: use_color,
+                 })
         } else {
             None
         }
@@ -1002,7 +1024,22 @@ impl TermDecoratorBuilder {
     /// If requested output was not usable (eg. closed stderr), it will return
     /// `TermDecorator` that discards logging records.
     pub fn build(self) -> TermDecorator {
-        TermDecorator(RefCell::new(self.0))
+        let use_color = self.should_use_color();
+        TermDecorator {
+            term: RefCell::new(self.term),
+            use_color: use_color,
+        }
+    }
+
+    fn should_use_color(&self) -> bool {
+        if let Some(color) = self.color {
+            return color;
+        }
+        match self.term {
+            Some(AnyTerminal::Stdout(_)) => isatty::stdout_isatty(),
+            Some(AnyTerminal::Stderr(_)) => isatty::stderr_isatty(),
+            None => false,
+        }
     }
 }
 
@@ -1013,7 +1050,10 @@ impl TermDecoratorBuilder {
 ///
 /// It does not deal with serialization so is `!Sync`. Run in a separate thread
 /// with `slog_async::Async`.
-pub struct TermDecorator(RefCell<Option<AnyTerminal>>);
+pub struct TermDecorator {
+    term: RefCell<Option<AnyTerminal>>,
+    use_color: bool,
+}
 
 impl TermDecorator {
     /// Start building `TermDecorator`
@@ -1045,11 +1085,12 @@ impl Decorator for TermDecorator {
                       -> io::Result<()>
         where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
     {
-        let mut term = self.0.borrow_mut();
+        let mut term = self.term.borrow_mut();
         if let Some(mut term) = term.as_mut() {
             let mut deco = TermRecordDecorator {
                 term: term,
                 level: record.level(),
+                use_color: self.use_color,
             };
             {
                 f(&mut deco)
@@ -1064,6 +1105,7 @@ impl Decorator for TermDecorator {
 pub struct TermRecordDecorator<'a> {
     term: &'a mut AnyTerminal,
     level: slog::Level,
+    use_color: bool,
 }
 
 impl<'a> io::Write for TermRecordDecorator<'a> {
@@ -1097,6 +1139,9 @@ fn term_error_to_io_error(e: term::Error) -> io::Error {
 
 impl<'a> RecordDecorator for TermRecordDecorator<'a> {
     fn reset(&mut self) -> io::Result<()> {
+        if !self.use_color {
+            return Ok(());
+        }
         match self.term {
                 &mut AnyTerminal::Stdout(ref mut term) => term.reset(),
                 &mut AnyTerminal::Stderr(ref mut term) => term.reset(),
@@ -1105,6 +1150,9 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
     }
 
     fn start_level(&mut self) -> io::Result<()> {
+        if !self.use_color {
+            return Ok(());
+        }
         let color = TermDecorator::level_to_color(self.level);
         match self.term {
                 &mut AnyTerminal::Stdout(ref mut term) => term.fg(color),
@@ -1114,6 +1162,9 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
     }
 
     fn start_key(&mut self) -> io::Result<()> {
+        if !self.use_color {
+            return Ok(());
+        }
         match self.term {
                 &mut AnyTerminal::Stdout(ref mut term) => {
                     if term.supports_attr(term::Attr::Bold) {
@@ -1140,5 +1191,21 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
 }
 
 // }}}
+
+// {{{ Helpers
+/// Create a `CompactFormat` drain with default settings
+pub fn term_compact() -> CompactFormat<TermDecorator> {
+    let decorator = TermDecorator::new().build();
+    CompactFormat::new(decorator).build()
+}
+
+/// Create a `FullFormat` drain with default settings
+pub fn term_full() -> FullFormat<TermDecorator> {
+    let decorator = TermDecorator::new().build();
+    FullFormat::new(decorator).build()
+}
+
+// }}}
+
 
 // vim: foldmethod=marker foldmarker={{{,}}}

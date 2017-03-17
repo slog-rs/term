@@ -8,9 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Fixed
 
 * `TermDecoratorBuilder::build()` will not panic anymore
+* `TermDecorator` will automatically detect if colors should be used
+* Add helper functions for drains with default settings
 
 ### Added
 
+* Color settings for `TermDecorator`
 * `TermDecoratorBuilder::try_build()` that returns `Option`
 
 ## 2.0.0-2.0 - 2017-03-11
