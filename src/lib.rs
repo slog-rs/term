@@ -32,8 +32,6 @@ extern crate isatty;
 extern crate chrono;
 extern crate thread_local;
 extern crate term;
-#[macro_use]
-extern crate error_chain;
 
 use slog::*;
 use slog::Drain;
@@ -43,10 +41,6 @@ use std::cell::RefCell;
 use std::io::Write as IoWrite;
 use std::panic::{UnwindSafe, RefUnwindSafe};
 use std::result;
-
-mod error;
-use error::{Result, ErrorKind};
-pub use error::Error;
 // }}}
 
 // {{{ Decorator
@@ -970,8 +964,6 @@ enum AnyTerminal {
     Stdout(Box<term::StdoutTerminal>),
     /// Stderr terminal
     Stderr(Box<term::StderrTerminal>),
-    /// No terminal available
-    None,
 }
 
 /// `TermDecorator` builder
@@ -979,44 +971,24 @@ pub struct TermDecoratorBuilder(AnyTerminal);
 
 impl TermDecoratorBuilder {
     fn new() -> Self {
-        match term::stderr() {
-            Some(term) => TermDecoratorBuilder(AnyTerminal::Stderr(term)),
-            None => TermDecoratorBuilder(AnyTerminal::None),
-        }
+        TermDecoratorBuilder(AnyTerminal::Stderr(term::stderr().unwrap()))
     }
 
     /// Output to `stderr`
     pub fn stderr(mut self) -> Self {
-        match term::stderr() {
-            Some(term) => {
-                self.0 = AnyTerminal::Stderr(term);
-            }
-            None => {
-                self.0 = AnyTerminal::None;
-            }
-        }
+        self.0 = AnyTerminal::Stderr(term::stderr().unwrap());
         self
     }
 
     /// Output to `stdout`
     pub fn stdout(mut self) -> Self {
-        match term::stdout() {
-            Some(term) => {
-                self.0 = AnyTerminal::Stdout(term);
-            }
-            None => {
-                self.0 = AnyTerminal::None;
-            }
-        }
+        self.0 = AnyTerminal::Stdout(term::stdout().unwrap());
         self
     }
 
     /// Build `TermDecorator`
-    pub fn build(self) -> Result<TermDecorator> {
-        match self.0 {
-            AnyTerminal::None => Err(ErrorKind::NoTerminal.into()),
-            term => Ok(TermDecorator(RefCell::new(term))),
-        }
+    pub fn build(self) -> TermDecorator {
+        TermDecorator(RefCell::new(self.0))
     }
 }
 
@@ -1081,7 +1053,6 @@ impl<'a> io::Write for TermRecordDecorator<'a> {
         match self.term {
             &mut AnyTerminal::Stdout(ref mut term) => term.write(buf),
             &mut AnyTerminal::Stderr(ref mut term) => term.write(buf),
-            &mut AnyTerminal::None => unreachable!(),
         }
     }
 
@@ -1089,7 +1060,6 @@ impl<'a> io::Write for TermRecordDecorator<'a> {
         match self.term {
             &mut AnyTerminal::Stdout(ref mut term) => term.flush(),
             &mut AnyTerminal::Stderr(ref mut term) => term.flush(),
-            &mut AnyTerminal::None => unreachable!(),
         }
     }
 }
@@ -1112,7 +1082,6 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         match self.term {
                 &mut AnyTerminal::Stdout(ref mut term) => term.reset(),
                 &mut AnyTerminal::Stderr(ref mut term) => term.reset(),
-                &mut AnyTerminal::None => unreachable!(),
             }
             .map_err(term_error_to_io_error)
     }
@@ -1122,7 +1091,6 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         match self.term {
                 &mut AnyTerminal::Stdout(ref mut term) => term.fg(color),
                 &mut AnyTerminal::Stderr(ref mut term) => term.fg(color),
-                &mut AnyTerminal::None => unreachable!(),
             }
             .map_err(term_error_to_io_error)
     }
@@ -1143,7 +1111,6 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
                         term.fg(term::color::BRIGHT_WHITE)
                     }
                 }
-                &mut AnyTerminal::None => unreachable!(),
             }
             .map_err(term_error_to_io_error)
     }
