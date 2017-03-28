@@ -61,6 +61,20 @@ pub trait Decorator {
         where F: FnOnce(&mut RecordDecorator) -> io::Result<()>;
 }
 
+impl<T: ?Sized> Decorator for Box<T>
+    where T: Decorator
+{
+    fn with_record<F>(&self,
+                      record: &Record,
+                      logger_kv: &OwnedKVList,
+                      f: F)
+                      -> io::Result<()>
+        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
+    {
+        (**self).with_record(record, logger_kv, f)
+    }
+}
+
 /// Per-record decorator
 pub trait RecordDecorator: io::Write {
     /// Reset formatting to defaults
