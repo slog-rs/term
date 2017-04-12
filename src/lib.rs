@@ -272,26 +272,29 @@ impl<D> FullFormat<D>
                    values: &OwnedKVList)
                    -> io::Result<()> {
 
-        self.decorator.with_record(record, values, |decorator| {
+        self.decorator
+            .with_record(record, values, |decorator| {
 
-            let comma_needed =
-                try!(print_msg_header(&*self.fn_timestamp, decorator, record));
-            {
-                let mut serializer = Serializer::new(decorator, comma_needed);
+                let comma_needed = try!(print_msg_header(&*self.fn_timestamp,
+                                                         decorator,
+                                                         record));
+                {
+                    let mut serializer = Serializer::new(decorator,
+                                                         comma_needed);
 
-                try!(record.kv().serialize(record, &mut serializer));
+                    try!(record.kv().serialize(record, &mut serializer));
 
-                try!(values.serialize(record, &mut serializer));
+                    try!(values.serialize(record, &mut serializer));
 
-            }
+                }
 
-            try!(decorator.start_whitespace());
-            try!(write!(decorator, "\n"));
+                try!(decorator.start_whitespace());
+                try!(write!(decorator, "\n"));
 
-            try!(decorator.flush());
+                try!(decorator.flush());
 
-            Ok(())
-        })
+                Ok(())
+            })
     }
 }
 // }}}
@@ -378,39 +381,43 @@ impl<D> CompactFormat<D>
                       values: &OwnedKVList)
                       -> io::Result<()> {
 
-        self.decorator.with_record(record, values, |decorator| {
-            let indent = {
-                let mut history_ref = self.history.borrow_mut();
-                let mut serializer =
-                    CompactFormatSerializer::new(decorator, &mut *history_ref);
+        self.decorator
+            .with_record(record, values, |decorator| {
+                let indent = {
+                    let mut history_ref = self.history.borrow_mut();
+                    let mut serializer =
+                        CompactFormatSerializer::new(decorator,
+                                                     &mut *history_ref);
 
-                try!(values.serialize(record, &mut serializer));
+                    try!(values.serialize(record, &mut serializer));
 
-                try!(serializer.finish())
-            };
+                    try!(serializer.finish())
+                };
 
 
-            decorator.start_whitespace()?;
+                decorator.start_whitespace()?;
 
-            for _ in 0..indent {
-                write!(decorator, " ")?;
-            }
+                for _ in 0..indent {
+                    write!(decorator, " ")?;
+                }
 
-            let comma_needed =
-                try!(print_msg_header(&*self.fn_timestamp, decorator, record));
-            {
-                let mut serializer = Serializer::new(decorator, comma_needed);
+                let comma_needed = try!(print_msg_header(&*self.fn_timestamp,
+                                                         decorator,
+                                                         record));
+                {
+                    let mut serializer = Serializer::new(decorator,
+                                                         comma_needed);
 
-                try!(record.kv().serialize(record, &mut serializer));
-            }
+                    try!(record.kv().serialize(record, &mut serializer));
+                }
 
-            try!(decorator.start_whitespace());
-            try!(write!(decorator, "\n"));
+                try!(decorator.start_whitespace());
+                try!(write!(decorator, "\n"));
 
-            try!(decorator.flush());
+                try!(decorator.flush());
 
-            Ok(())
-        })
+                Ok(())
+            })
     }
 }
 // }}}
@@ -575,7 +582,8 @@ impl<'a> CompactFormatSerializer<'a> {
             };
 
             if push {
-                self.history.push(mem::replace(&mut buf, (vec![], vec![])));
+                self.history
+                    .push(mem::replace(&mut buf, (vec![], vec![])));
 
             }
 
@@ -727,10 +735,12 @@ impl<'a> CountingWriter<'a> {
 
 impl<'a> io::Write for CountingWriter<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.wrapped.write(buf).map(|n| {
-                                        self.count += n;
-                                        n
-                                    })
+        self.wrapped
+            .write(buf)
+            .map(|n| {
+                     self.count += n;
+                     n
+                 })
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -738,10 +748,12 @@ impl<'a> io::Write for CountingWriter<'a> {
     }
 
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
-        self.wrapped.write_all(buf).map(|_| {
-                                            self.count += buf.len();
-                                            ()
-                                        })
+        self.wrapped
+            .write_all(buf)
+            .map(|_| {
+                     self.count += buf.len();
+                     ()
+                 })
     }
 }
 // }}}
@@ -939,10 +951,11 @@ impl<W> io::Write for PlainSyncRecordDecorator<W>
         }
 
         let mut io = try!(self.io
-            .lock()
-            .map_err(|_| {
-                io::Error::new(io::ErrorKind::Other, "mutex locking error")
-            }));
+                              .lock()
+                              .map_err(|_| {
+                                           io::Error::new(io::ErrorKind::Other,
+                                                          "mutex locking error")
+                                       }));
 
         try!(io.write_all(&self.buf));
         self.buf.clear();

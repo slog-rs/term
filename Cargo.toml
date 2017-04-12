@@ -1,6 +1,6 @@
 [package]
 name = "slog-term"
-version = "2.0.0-3.0"
+version = "2.0.0-4.0"
 authors = ["Dawid Ciężarkiewicz <dpc@dpc.pw>"]
 description = "Unix terminal drain and formatter for slog-rs"
 keywords = ["slog", "logging", "log", "term"]
@@ -11,11 +11,11 @@ repository = "https://github.com/slog-rs/term"
 readme = "README.md"
 
 [dependencies]
-slog = "~2.0.0-3"
+slog = "2"
 isatty = "0.1"
 chrono = "0.3"
 thread_local = "0.3.3"
 term = "0.4.5"
 
 [dev-dependencies]
-slog-async = "~2.0.0-3"
+slog-async = "2"
