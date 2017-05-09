@@ -438,10 +438,10 @@ impl<'a> Serializer<'a> {
 
     fn maybe_print_comma(&mut self) -> io::Result<()> {
         if self.comma_needed {
-            try!(self.decorator.start_comma());
-            try!(write!(self.decorator, ", "));
-            self.comma_needed |= true
+            self.decorator.start_comma()?;
+            write!(self.decorator, ", ")?;
         }
+        self.comma_needed |= true;
         Ok(())
     }
 }
