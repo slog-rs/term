@@ -789,7 +789,7 @@ pub fn timestamp_local(io: &mut io::Write) -> io::Result<()> {
 ///
 /// The exact format used, is still subject to change.
 pub fn timestamp_utc(io: &mut io::Write) -> io::Result<()> {
-    write!(io, "{}", chrono::UTC::now().format(TIMESTAMP_FORMAT))
+    write!(io, "{}", chrono::Utc::now().format(TIMESTAMP_FORMAT))
 }
 // }}}
 
