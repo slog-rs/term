@@ -1,6 +1,6 @@
 [package]
 name = "slog-term"
-version = "2.0.2-pre"
+version = "2.0.2"
 authors = ["Dawid Ciężarkiewicz <dpc@dpc.pw>"]
 description = "Unix terminal drain and formatter for slog-rs"
 keywords = ["slog", "logging", "log", "term"]
