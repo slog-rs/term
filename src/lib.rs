@@ -1,5 +1,5 @@
 // {{{ Module docs
-//! `slog-rs`'a `Drain` for terminal output
+//! `slog-rs`'s `Drain` for terminal output
 //!
 //! This crate implements output formatting targeting logging to
 //! terminal/console/shell or similar text-based IO.
