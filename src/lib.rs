@@ -45,7 +45,7 @@
 //! }
 //! ```
 //!
-//! # Synchronization via `async_logger`
+//! # Synchronization via `slog_async`
 //!
 //! This drain puts logging into a separate thread via `slog_async::Async`:
 //! formatting and writing to terminal is happening in a one dedicated thread,
@@ -73,7 +73,7 @@
 //! # Synchronization via `Mutex`
 //!
 //! This drain synchronizes by wrapping everything in a big mutex (yes,
-//! `Mutex<Drain> implements a `Drain`) . This is kind of slow, but in scripting
+//! `Mutex<Drain>` implements a `Drain` trait). This is kind of slow, but in scripting
 //! languages like Ruby or Python pretty much the whole code is running in a one
 //! huge mutex and noone seems to mind, so I'm sure you're going to get away
 //! with this. Personally, I am a bit sad, that I've spent so much effort to
