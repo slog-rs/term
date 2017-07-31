@@ -1,11 +1,31 @@
 // {{{ Module docs
-//! `slog-rs`'a `Drain` for terminal output
+//! `slog-rs` `Drain` for terminal output
 //!
 //! This crate implements output formatting targeting logging to
 //! terminal/console/shell or similar text-based IO.
 //!
+//! **Warning**: `slog-term` (like `slog-rs` itself) is fast, modular and extensible.
+//! It comes with a price: a lot of details (*that you don't care about
+//! right now and think they are stupid, until you actually do and then you are
+//! happy that someone thought of them for you*) are being taken into
+//! consideration. Anyway, **if you just want to get a logging to terminal
+//! working with `slog`**, consider using a wrapper crate like
+//! [sloggers](https://docs.rs/sloggers/) instead.
+//!
+//! **Note**: A lot of users gets bitten by the fact that
+//! `slog::Logger::root(...)` requires a drain that is
+//! safe to send and share across threads (`Send+Sync`). With shared resource
+//! like terminal or a file to which you log, a synchronization needs to be
+//! taken care of. If you get compilation errors around `Sync` or `Send` you
+//! are doing something wrong around it.
+//!
 //! Using `Decorator` open trait, user can implement outputting
 //! using different colors, terminal types and so on.
+//!
+//! # Synchronization via `PlainSyncDecorator`
+//!
+//! This logger works by synchronizing on the IO directly in
+//! `PlainSyncDecorator`.  The formatting itself is thread-safe.
 //!
 //! ```
 //! #[macro_use]
@@ -16,10 +36,65 @@
 //!
 //! fn main() {
 //!     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
-//!     let root = Logger::root(
+//!     let logger = Logger::root(
 //!         slog_term::FullFormat::new(plain)
 //!         .build().fuse(), o!()
 //!     );
+//!
+//!     info!(logger, "Logging ready!");
+//! }
+//! ```
+//!
+//! # Synchronization via `async_logger`
+//!
+//! This drain puts logging into a separate thread via `slog_async::Async`:
+//! formatting and writing to terminal is happening in a one dedicated thread,
+//! so no further synchronization is required.
+//!
+//! ```
+//! #[macro_use]
+//! extern crate slog;
+//! extern crate slog_term;
+//! extern crate slog_async;
+//!
+//! use slog::Drain;
+//!
+//! fn main() {
+//!     let decorator = slog_term::TermDecorator::new().build();
+//!     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
+//!     let drain = slog_async::Async::new(drain).build().fuse();
+//!
+//!     let log = slog::Logger::root(drain, o!());
+//!
+//!     info!(log, "Logging ready!");
+//! }
+//! ```
+//!
+//! # Synchronization via `Mutex`
+//!
+//! This drain synchronizes by wrapping everything in a big mutex (yes,
+//! `Mutex<Drain> implements a `Drain`) . This is kind of slow, but in scripting
+//! languages like Ruby or Python pretty much the whole code is running in a one
+//! huge mutex and noone seems to mind, so I'm sure you're going to get away
+//! with this. Personally, I am a bit sad, that I've spent so much effort to
+//! give you tools to make your code as efficient as possible, and you choose
+//! this. ಠ_ಠ . But I'm here to serve, not to tell you what to do.
+//!
+//! ```
+//! #[macro_use]
+//! extern crate slog;
+//! extern crate slog_term;
+//!
+//! use slog::Drain;
+//!
+//! fn main() {
+//!     let decorator = slog_term::TermDecorator::new().build();
+//!     let drain = slog_term::CompactFormat::new(decorator).build();
+//!     let drain = std::sync::Mutex::new(drain).fuse();
+//!
+//!     let log = slog::Logger::root(drain, o!());
+//!
+//!     info!(log, "Logging ready!");
 //! }
 //! ```
 // }}}
@@ -36,10 +111,10 @@ extern crate term;
 use slog::*;
 use slog::Drain;
 
-use std::{io, fmt, sync, mem};
+use std::{fmt, io, mem, sync};
 use std::cell::RefCell;
 use std::io::Write as IoWrite;
-use std::panic::{UnwindSafe, RefUnwindSafe};
+use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::result;
 // }}}
 
@@ -53,23 +128,28 @@ pub trait Decorator {
     ///
     /// This allows `Decorator` to have on-stack data per processed `Record`s
     ///
-    fn with_record<F>(&self,
-                      _record: &Record,
-                      _logger_values: &OwnedKVList,
-                      f: F)
-                      -> io::Result<()>
-        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>;
+    fn with_record<F>(
+        &self,
+        _record: &Record,
+        _logger_values: &OwnedKVList,
+        f: F,
+    ) -> io::Result<()>
+    where
+        F: FnOnce(&mut RecordDecorator) -> io::Result<()>;
 }
 
 impl<T: ?Sized> Decorator for Box<T>
-    where T: Decorator
+where
+    T: Decorator,
 {
-    fn with_record<F>(&self,
-                      record: &Record,
-                      logger_kv: &OwnedKVList,
-                      f: F)
-                      -> io::Result<()>
-        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
+    fn with_record<F>(
+        &self,
+        record: &Record,
+        logger_kv: &OwnedKVList,
+        f: F,
+    ) -> io::Result<()>
+    where
+        F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
     {
         (**self).with_record(record, logger_kv, f)
     }
@@ -168,10 +248,11 @@ impl RecordDecorator for Box<RecordDecorator> {
 
 // {{{ Misc
 /// Returns `true` if message was not empty
-fn print_msg_header(fn_timestamp: &ThreadSafeTimestampFn<Output =
-                    io::Result<()>>, mut rd: &mut RecordDecorator, record:
-                    &Record)
--> io::Result<bool>{
+fn print_msg_header(
+    fn_timestamp: &ThreadSafeTimestampFn<Output = io::Result<()>>,
+    mut rd: &mut RecordDecorator,
+    record: &Record,
+) -> io::Result<bool> {
     try!(rd.start_timestamp());
     try!(fn_timestamp(&mut rd));
 
@@ -194,8 +275,13 @@ fn print_msg_header(fn_timestamp: &ThreadSafeTimestampFn<Output =
 
 // {{{ Term
 /// Terminal-output formatting `Drain`
+///
+/// **Note**: logging to `FullFormat` drain is thread-safe, since every
+/// line of output is formatted indecently. However, the underlying
+/// IO, needs to be synchronized.
 pub struct FullFormat<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
@@ -203,14 +289,16 @@ pub struct FullFormat<D>
 
 /// Streamer builder
 pub struct FullFormatBuilder<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
 
 impl<D> FullFormatBuilder<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     /// Use the UTC time zone for the timestamp
     pub fn use_utc_timestamp(mut self) -> Self {
@@ -226,7 +314,8 @@ impl<D> FullFormatBuilder<D>
 
     /// Provide a custom function to generate the timestamp
     pub fn use_custom_timestamp<F>(mut self, f: F) -> Self
-        where F: ThreadSafeTimestampFn
+    where
+        F: ThreadSafeTimestampFn,
     {
         self.fn_timestamp = Box::new(f);
         self
@@ -243,21 +332,24 @@ impl<D> FullFormatBuilder<D>
 
 
 impl<D> Drain for FullFormat<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     type Ok = ();
     type Err = io::Error;
 
-    fn log(&self,
-           record: &Record,
-           values: &OwnedKVList)
-           -> result::Result<Self::Ok, Self::Err> {
+    fn log(
+        &self,
+        record: &Record,
+        values: &OwnedKVList,
+    ) -> result::Result<Self::Ok, Self::Err> {
         self.format_full(record, values)
     }
 }
 
 impl<D> FullFormat<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     /// New `TermBuilder`
     pub fn new(d: D) -> FullFormatBuilder<D> {
@@ -267,42 +359,47 @@ impl<D> FullFormat<D>
         }
     }
 
-    fn format_full(&self,
-                   record: &Record,
-                   values: &OwnedKVList)
-                   -> io::Result<()> {
+    fn format_full(
+        &self,
+        record: &Record,
+        values: &OwnedKVList,
+    ) -> io::Result<()> {
 
-        self.decorator
-            .with_record(record, values, |decorator| {
+        self.decorator.with_record(record, values, |decorator| {
 
-                let comma_needed = try!(print_msg_header(&*self.fn_timestamp,
-                                                         decorator,
-                                                         record));
-                {
-                    let mut serializer = Serializer::new(decorator,
-                                                         comma_needed);
+            let comma_needed =
+                try!(print_msg_header(&*self.fn_timestamp, decorator, record));
+            {
+                let mut serializer = Serializer::new(decorator, comma_needed);
 
-                    try!(record.kv().serialize(record, &mut serializer));
+                try!(record.kv().serialize(record, &mut serializer));
 
-                    try!(values.serialize(record, &mut serializer));
+                try!(values.serialize(record, &mut serializer));
 
-                }
+            }
 
-                try!(decorator.start_whitespace());
-                try!(write!(decorator, "\n"));
+            try!(decorator.start_whitespace());
+            try!(write!(decorator, "\n"));
 
-                try!(decorator.flush());
+            try!(decorator.flush());
 
-                Ok(())
-            })
+            Ok(())
+        })
     }
 }
 // }}}
 
 // {{{ CompactFormat
 /// Compact terminal-output formatting `Drain`
+///
+/// **Note**: Compact logging format is not `Sync` (thread-safe) and needs to be
+/// synchronized externally, as current output depends on the previous one.
+///
+/// Put it into a `std::sync::Mutex` or `slog_async::Async` worker-thread to
+/// serialize accesses to it.
 pub struct CompactFormat<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     decorator: D,
     history: RefCell<Vec<(Vec<u8>, Vec<u8>)>>,
@@ -311,14 +408,16 @@ pub struct CompactFormat<D>
 
 /// Streamer builder
 pub struct CompactFormatBuilder<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
 
 impl<D> CompactFormatBuilder<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     /// Use the UTC time zone for the timestamp
     pub fn use_utc_timestamp(mut self) -> Self {
@@ -334,7 +433,8 @@ impl<D> CompactFormatBuilder<D>
 
     /// Provide a custom function to generate the timestamp
     pub fn use_custom_timestamp<F>(mut self, f: F) -> Self
-        where F: ThreadSafeTimestampFn
+    where
+        F: ThreadSafeTimestampFn,
     {
         self.fn_timestamp = Box::new(f);
         self
@@ -352,21 +452,24 @@ impl<D> CompactFormatBuilder<D>
 
 
 impl<D> Drain for CompactFormat<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     type Ok = ();
     type Err = io::Error;
 
-    fn log(&self,
-           record: &Record,
-           values: &OwnedKVList)
-           -> result::Result<Self::Ok, Self::Err> {
+    fn log(
+        &self,
+        record: &Record,
+        values: &OwnedKVList,
+    ) -> result::Result<Self::Ok, Self::Err> {
         self.format_compact(record, values)
     }
 }
 
 impl<D> CompactFormat<D>
-    where D: Decorator
+where
+    D: Decorator,
 {
     /// New `CompactFormatBuilder`
     pub fn new(d: D) -> CompactFormatBuilder<D> {
@@ -376,48 +479,45 @@ impl<D> CompactFormat<D>
         }
     }
 
-    fn format_compact(&self,
-                      record: &Record,
-                      values: &OwnedKVList)
-                      -> io::Result<()> {
+    fn format_compact(
+        &self,
+        record: &Record,
+        values: &OwnedKVList,
+    ) -> io::Result<()> {
 
-        self.decorator
-            .with_record(record, values, |decorator| {
-                let indent = {
-                    let mut history_ref = self.history.borrow_mut();
-                    let mut serializer =
-                        CompactFormatSerializer::new(decorator,
-                                                     &mut *history_ref);
+        self.decorator.with_record(record, values, |decorator| {
+            let indent = {
+                let mut history_ref = self.history.borrow_mut();
+                let mut serializer =
+                    CompactFormatSerializer::new(decorator, &mut *history_ref);
 
-                    try!(values.serialize(record, &mut serializer));
+                try!(values.serialize(record, &mut serializer));
 
-                    try!(serializer.finish())
-                };
+                try!(serializer.finish())
+            };
 
 
-                decorator.start_whitespace()?;
+            decorator.start_whitespace()?;
 
-                for _ in 0..indent {
-                    write!(decorator, " ")?;
-                }
+            for _ in 0..indent {
+                write!(decorator, " ")?;
+            }
 
-                let comma_needed = try!(print_msg_header(&*self.fn_timestamp,
-                                                         decorator,
-                                                         record));
-                {
-                    let mut serializer = Serializer::new(decorator,
-                                                         comma_needed);
+            let comma_needed =
+                try!(print_msg_header(&*self.fn_timestamp, decorator, record));
+            {
+                let mut serializer = Serializer::new(decorator, comma_needed);
 
-                    try!(record.kv().serialize(record, &mut serializer));
-                }
+                try!(record.kv().serialize(record, &mut serializer));
+            }
 
-                try!(decorator.start_whitespace());
-                try!(write!(decorator, "\n"));
+            try!(decorator.start_whitespace());
+            try!(write!(decorator, "\n"));
 
-                try!(decorator.flush());
+            try!(decorator.flush());
 
-                Ok(())
-            })
+            Ok(())
+        })
     }
 }
 // }}}
@@ -535,10 +635,11 @@ impl<'a> slog::ser::Serializer for Serializer<'a> {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_arguments(&mut self,
-                      key: &str,
-                      val: &fmt::Arguments)
-                      -> slog::Result {
+    fn emit_arguments(
+        &mut self,
+        key: &str,
+        val: &fmt::Arguments,
+    ) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
@@ -554,9 +655,10 @@ struct CompactFormatSerializer<'a> {
 }
 
 impl<'a> CompactFormatSerializer<'a> {
-    fn new(d: &'a mut RecordDecorator,
-           history: &'a mut Vec<(Vec<u8>, Vec<u8>)>)
-           -> Self {
+    fn new(
+        d: &'a mut RecordDecorator,
+        history: &'a mut Vec<(Vec<u8>, Vec<u8>)>,
+    ) -> Self {
         CompactFormatSerializer {
             decorator: d,
             history: history,
@@ -569,21 +671,20 @@ impl<'a> CompactFormatSerializer<'a> {
 
         for mut buf in self.buf.drain(..).rev() {
 
-            let (print, trunc, push) = if let Some(prev) =
-                self.history.get_mut(indent) {
-                if *prev != buf {
-                    *prev = mem::replace(&mut buf, (vec![], vec![]));
-                    (true, true, false)
+            let (print, trunc, push) =
+                if let Some(prev) = self.history.get_mut(indent) {
+                    if *prev != buf {
+                        *prev = mem::replace(&mut buf, (vec![], vec![]));
+                        (true, true, false)
+                    } else {
+                        (false, false, false)
+                    }
                 } else {
-                    (false, false, false)
-                }
-            } else {
-                (true, false, true)
-            };
+                    (true, false, true)
+                };
 
             if push {
-                self.history
-                    .push(mem::replace(&mut buf, (vec![], vec![])));
+                self.history.push(mem::replace(&mut buf, (vec![], vec![])));
 
             }
 
@@ -703,10 +804,11 @@ impl<'a> slog::ser::Serializer for CompactFormatSerializer<'a> {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_arguments(&mut self,
-                      key: &str,
-                      val: &fmt::Arguments)
-                      -> slog::Result {
+    fn emit_arguments(
+        &mut self,
+        key: &str,
+        val: &fmt::Arguments,
+    ) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
@@ -735,12 +837,10 @@ impl<'a> CountingWriter<'a> {
 
 impl<'a> io::Write for CountingWriter<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.wrapped
-            .write(buf)
-            .map(|n| {
-                     self.count += n;
-                     n
-                 })
+        self.wrapped.write(buf).map(|n| {
+            self.count += n;
+            n
+        })
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -748,12 +848,10 @@ impl<'a> io::Write for CountingWriter<'a> {
     }
 
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
-        self.wrapped
-            .write_all(buf)
-            .map(|_| {
-                     self.count += buf.len();
-                     ()
-                 })
+        self.wrapped.write_all(buf).map(|_| {
+            self.count += buf.len();
+            ()
+        })
     }
 }
 // }}}
@@ -765,14 +863,19 @@ impl<'a> io::Write for CountingWriter<'a> {
 /// bounds expressed by this trait need to satisfied for a function
 /// to be used in timestamp formatting.
 pub trait ThreadSafeTimestampFn
-    : Fn(&mut io::Write) ->
-    io::Result<()> + Send + Sync + UnwindSafe + RefUnwindSafe + 'static {
+    : Fn(&mut io::Write) -> io::Result<()>
+    + Send
+    + Sync
+    + UnwindSafe
+    + RefUnwindSafe
+    + 'static {
 }
 
 impl<F> ThreadSafeTimestampFn for F
-    where F: Fn(&mut io::Write) -> io::Result<()> + Send + Sync,
-          F: UnwindSafe + RefUnwindSafe + 'static,
-          F: ?Sized
+where
+    F: Fn(&mut io::Write) -> io::Result<()> + Send + Sync,
+    F: UnwindSafe + RefUnwindSafe + 'static,
+    F: ?Sized,
 {
 }
 
@@ -822,10 +925,13 @@ pub fn timestamp_utc(io: &mut io::Write) -> io::Result<()> {
 /// }
 /// ```
 
-pub struct PlainDecorator<W>(RefCell<W>) where W: io::Write;
+pub struct PlainDecorator<W>(RefCell<W>)
+where
+    W: io::Write;
 
 impl<W> PlainDecorator<W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     /// Create `PlainDecorator` instance
     pub fn new(io: W) -> Self {
@@ -834,24 +940,30 @@ impl<W> PlainDecorator<W>
 }
 
 impl<W> Decorator for PlainDecorator<W>
-    where W: io::Write + Send + 'static
+where
+    W: io::Write + Send + 'static,
 {
-    fn with_record<F>(&self,
-                      _record: &Record,
-                      _logger_values: &OwnedKVList,
-                      f: F)
-                      -> io::Result<()>
-        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
+    fn with_record<F>(
+        &self,
+        _record: &Record,
+        _logger_values: &OwnedKVList,
+        f: F,
+    ) -> io::Result<()>
+    where
+        F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
     {
         f(&mut PlainRecordDecorator(&self.0))
     }
 }
 
 /// Record decorator used by `PlainDecorator`
-pub struct PlainRecordDecorator<'a, W: 'a>(&'a RefCell<W>) where W: io::Write;
+pub struct PlainRecordDecorator<'a, W: 'a>(&'a RefCell<W>)
+where
+    W: io::Write;
 
 impl<'a, W> io::Write for PlainRecordDecorator<'a, W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.0.borrow_mut().write(buf)
@@ -863,7 +975,8 @@ impl<'a, W> io::Write for PlainRecordDecorator<'a, W>
 }
 
 impl<'a, W> Drop for PlainRecordDecorator<'a, W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     fn drop(&mut self) {
         let _ = self.flush();
@@ -871,7 +984,8 @@ impl<'a, W> Drop for PlainRecordDecorator<'a, W>
 }
 
 impl<'a, W> RecordDecorator for PlainRecordDecorator<'a, W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     fn reset(&mut self) -> io::Result<()> {
         Ok(())
@@ -901,11 +1015,13 @@ impl<'a, W> RecordDecorator for PlainRecordDecorator<'a, W>
 ///     );
 /// }
 /// ```
-
-pub struct PlainSyncDecorator<W>(sync::Arc<sync::Mutex<W>>) where W: io::Write;
+pub struct PlainSyncDecorator<W>(sync::Arc<sync::Mutex<W>>)
+where
+    W: io::Write;
 
 impl<W> PlainSyncDecorator<W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     /// Create `PlainSyncDecorator` instance
     pub fn new(io: W) -> Self {
@@ -914,32 +1030,37 @@ impl<W> PlainSyncDecorator<W>
 }
 
 impl<W> Decorator for PlainSyncDecorator<W>
-    where W: io::Write + Send + 'static
+where
+    W: io::Write + Send + 'static,
 {
-    fn with_record<F>(&self,
-                      _record: &Record,
-                      _logger_values: &OwnedKVList,
-                      f: F)
-                      -> io::Result<()>
-        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
+    fn with_record<F>(
+        &self,
+        _record: &Record,
+        _logger_values: &OwnedKVList,
+        f: F,
+    ) -> io::Result<()>
+    where
+        F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
     {
         f(&mut PlainSyncRecordDecorator {
-                   io: self.0.clone(),
-                   buf: vec![],
-               })
+            io: self.0.clone(),
+            buf: vec![],
+        })
     }
 }
 
 /// `RecordDecorator` used by `PlainSyncDecorator`
 pub struct PlainSyncRecordDecorator<W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     io: sync::Arc<sync::Mutex<W>>,
     buf: Vec<u8>,
 }
 
 impl<W> io::Write for PlainSyncRecordDecorator<W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.buf.write(buf)
@@ -950,12 +1071,9 @@ impl<W> io::Write for PlainSyncRecordDecorator<W>
             return Ok(());
         }
 
-        let mut io = try!(self.io
-                              .lock()
-                              .map_err(|_| {
-                                           io::Error::new(io::ErrorKind::Other,
-                                                          "mutex locking error")
-                                       }));
+        let mut io = try!(self.io.lock().map_err(|_| {
+            io::Error::new(io::ErrorKind::Other, "mutex locking error")
+        }));
 
         try!(io.write_all(&self.buf));
         self.buf.clear();
@@ -964,7 +1082,8 @@ impl<W> io::Write for PlainSyncRecordDecorator<W>
 }
 
 impl<W> Drop for PlainSyncRecordDecorator<W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     fn drop(&mut self) {
         let _ = self.flush();
@@ -972,7 +1091,8 @@ impl<W> Drop for PlainSyncRecordDecorator<W>
 }
 
 impl<W> RecordDecorator for PlainSyncRecordDecorator<W>
-    where W: io::Write
+where
+    W: io::Write,
 {
     fn reset(&mut self) -> io::Result<()> {
         Ok(())
@@ -1038,9 +1158,9 @@ impl TermDecoratorBuilder {
         let use_color = self.should_use_color();
         if let Some(io) = self.term {
             Some(TermDecorator {
-                     term: RefCell::new(Some(io)),
-                     use_color: use_color,
-                 })
+                term: RefCell::new(Some(io)),
+                use_color: use_color,
+            })
         } else {
             None
         }
@@ -1105,12 +1225,14 @@ impl TermDecorator {
 }
 
 impl Decorator for TermDecorator {
-    fn with_record<F>(&self,
-                      record: &Record,
-                      _logger_values: &OwnedKVList,
-                      f: F)
-                      -> io::Result<()>
-        where F: FnOnce(&mut RecordDecorator) -> io::Result<()>
+    fn with_record<F>(
+        &self,
+        record: &Record,
+        _logger_values: &OwnedKVList,
+        f: F,
+    ) -> io::Result<()>
+    where
+        F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
     {
         let mut term = self.term.borrow_mut();
         if let Some(mut term) = term.as_mut() {
@@ -1170,10 +1292,9 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
             return Ok(());
         }
         match self.term {
-                &mut AnyTerminal::Stdout(ref mut term) => term.reset(),
-                &mut AnyTerminal::Stderr(ref mut term) => term.reset(),
-            }
-            .map_err(term_error_to_io_error)
+            &mut AnyTerminal::Stdout(ref mut term) => term.reset(),
+            &mut AnyTerminal::Stderr(ref mut term) => term.reset(),
+        }.map_err(term_error_to_io_error)
     }
 
     fn start_level(&mut self) -> io::Result<()> {
@@ -1182,10 +1303,9 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         }
         let color = TermDecorator::level_to_color(self.level);
         match self.term {
-                &mut AnyTerminal::Stdout(ref mut term) => term.fg(color),
-                &mut AnyTerminal::Stderr(ref mut term) => term.fg(color),
-            }
-            .map_err(term_error_to_io_error)
+            &mut AnyTerminal::Stdout(ref mut term) => term.fg(color),
+            &mut AnyTerminal::Stderr(ref mut term) => term.fg(color),
+        }.map_err(term_error_to_io_error)
     }
 
     fn start_key(&mut self) -> io::Result<()> {
@@ -1193,22 +1313,21 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
             return Ok(());
         }
         match self.term {
-                &mut AnyTerminal::Stdout(ref mut term) => {
-                    if term.supports_attr(term::Attr::Bold) {
-                        term.attr(term::Attr::Bold)
-                    } else {
-                        term.fg(term::color::BRIGHT_WHITE)
-                    }
-                }
-                &mut AnyTerminal::Stderr(ref mut term) => {
-                    if term.supports_attr(term::Attr::Bold) {
-                        term.attr(term::Attr::Bold)
-                    } else {
-                        term.fg(term::color::BRIGHT_WHITE)
-                    }
+            &mut AnyTerminal::Stdout(ref mut term) => {
+                if term.supports_attr(term::Attr::Bold) {
+                    term.attr(term::Attr::Bold)
+                } else {
+                    term.fg(term::color::BRIGHT_WHITE)
                 }
             }
-            .map_err(term_error_to_io_error)
+            &mut AnyTerminal::Stderr(ref mut term) => {
+                if term.supports_attr(term::Attr::Bold) {
+                    term.attr(term::Attr::Bold)
+                } else {
+                    term.fg(term::color::BRIGHT_WHITE)
+                }
+            }
+        }.map_err(term_error_to_io_error)
     }
 
     fn start_msg(&mut self) -> io::Result<()> {
