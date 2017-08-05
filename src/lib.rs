@@ -1338,6 +1338,23 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
 
 // }}}
 
+// {{{ TestStdoutWriter
+/// Replacement for `std::io::stdout()` for when output capturing by rust's test harness is
+/// required.
+pub struct TestStdoutWriter;
+
+impl io::Write for TestStdoutWriter {
+    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
+        print!("{}", std::str::from_utf8(data)
+                              .map_err(|x| io::Error::new(io::ErrorKind::InvalidData, x))?);
+        Ok(data.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        io::stdout().flush()
+    }
+}
+// }}}
+
 // {{{ Helpers
 /// Create a `CompactFormat` drain with default settings
 pub fn term_compact() -> CompactFormat<TermDecorator> {
