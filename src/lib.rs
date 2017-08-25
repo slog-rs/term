@@ -285,6 +285,7 @@ where
 {
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
+    original_order: bool,
 }
 
 /// Streamer builder
@@ -294,6 +295,7 @@ where
 {
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
+    original_order: bool,
 }
 
 impl<D> FullFormatBuilder<D>
@@ -321,11 +323,19 @@ where
         self
     }
 
+    /// Use the original ordering
+    pub fn use_original_order(mut self) -> Self {
+        self.original_order = true;
+
+        self
+    }
+
     /// Build `FullFormat`
     pub fn build(self) -> FullFormat<D> {
         FullFormat {
             decorator: self.decorator,
             fn_timestamp: self.fn_timestamp,
+            original_order: self.original_order,
         }
     }
 }
@@ -356,6 +366,7 @@ where
         FullFormatBuilder {
             fn_timestamp: Box::new(timestamp_local),
             decorator: d,
+            original_order: false,
         }
     }
 
@@ -370,11 +381,14 @@ where
             let comma_needed =
                 try!(print_msg_header(&*self.fn_timestamp, decorator, record));
             {
-                let mut serializer = Serializer::new(decorator, comma_needed);
+                let mut serializer = Serializer::new(decorator, comma_needed,
+                                                     self.original_order);
 
                 try!(record.kv().serialize(record, &mut serializer));
 
                 try!(values.serialize(record, &mut serializer));
+
+                serializer.finish()?;
 
             }
 
@@ -506,9 +520,12 @@ where
             let comma_needed =
                 try!(print_msg_header(&*self.fn_timestamp, decorator, record));
             {
-                let mut serializer = Serializer::new(decorator, comma_needed);
+                let mut serializer = Serializer::new(decorator, comma_needed,
+                                                     false);
 
                 try!(record.kv().serialize(record, &mut serializer));
+
+                serializer.finish()?;
             }
 
             try!(decorator.start_whitespace());
@@ -526,13 +543,17 @@ where
 struct Serializer<'a> {
     comma_needed: bool,
     decorator: &'a mut RecordDecorator,
+    reverse: bool,
+    stack: Vec<(String, String)>,
 }
 
 impl<'a> Serializer<'a> {
-    fn new(d: &'a mut RecordDecorator, comma_needed: bool) -> Self {
+    fn new(d: &'a mut RecordDecorator, comma_needed: bool, reverse: bool) -> Self {
         Serializer {
             comma_needed: comma_needed,
             decorator: d,
+            reverse: reverse,
+            stack: vec!(),
         }
     }
 
@@ -544,11 +565,39 @@ impl<'a> Serializer<'a> {
         self.comma_needed |= true;
         Ok(())
     }
+
+    fn finish(mut self) -> io::Result<()> {
+        loop {
+            if let Some((k, v)) = self.stack.pop() {
+                self.maybe_print_comma()?;
+                self.decorator.start_key()?;
+                write!(self.decorator, "{}", k)?;
+                write!(self.decorator, ":")?;
+                self.decorator.start_whitespace()?;
+                write!(self.decorator, " ")?;
+                self.decorator.start_value()?;
+                write!(self.decorator, "{}", v)?;
+            } else {
+                return Ok(());
+            }
+        }
+    }
+}
+
+impl<'a> Drop for Serializer<'a> {
+    fn drop(&mut self) {
+        if !self.stack.is_empty() {
+            panic!("stack not empty");
+        }
+    }
 }
 
 macro_rules! s(
     ($s:expr, $k:expr, $v:expr) => {
 
+        if $s.reverse {
+            $s.stack.push(($k.into(), format!("{}", $v)));
+        } else {
         try!($s.maybe_print_comma());
         try!($s.decorator.start_key());
         try!(write!($s.decorator, "{}", $k));
@@ -558,6 +607,7 @@ macro_rules! s(
         try!(write!($s.decorator, " "));
         try!($s.decorator.start_value());
         try!(write!($s.decorator, "{}", $v));
+        }
     };
 );
 
@@ -1235,7 +1285,7 @@ impl Decorator for TermDecorator {
         F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
     {
         let mut term = self.term.borrow_mut();
-        if let Some(mut term) = term.as_mut() {
+        if let Some(term) = term.as_mut() {
             let mut deco = TermRecordDecorator {
                 term: term,
                 level: record.level(),
