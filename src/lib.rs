@@ -285,7 +285,7 @@ where
 {
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
-    original_order: bool,
+    use_original_order: bool,
 }
 
 /// Streamer builder
@@ -335,7 +335,7 @@ where
         FullFormat {
             decorator: self.decorator,
             fn_timestamp: self.fn_timestamp,
-            original_order: self.original_order,
+            use_original_order: self.original_order,
         }
     }
 }
@@ -382,7 +382,7 @@ where
                 try!(print_msg_header(&*self.fn_timestamp, decorator, record));
             {
                 let mut serializer = Serializer::new(decorator, comma_needed,
-                                                     self.original_order);
+                                                     self.use_original_order);
 
                 try!(record.kv().serialize(record, &mut serializer));
 
