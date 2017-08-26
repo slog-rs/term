@@ -325,10 +325,12 @@ where
         self
     }
 
-    /// Use the original ordering
+    /// Use the original ordering of key-value pairs
+    ///
+    /// By default, key-values are printed in a reversed order. This option will
+    /// change it to the order in which key-values were added.
     pub fn use_original_order(mut self) -> Self {
         self.original_order = true;
-
         self
     }
 
