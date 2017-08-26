@@ -4,8 +4,9 @@
 //! This crate implements output formatting targeting logging to
 //! terminal/console/shell or similar text-based IO.
 //!
-//! **Warning**: `slog-term` (like `slog-rs` itself) is fast, modular and extensible.
-//! It comes with a price: a lot of details (*that you don't care about
+//! **Warning**: `slog-term` (like `slog-rs` itself) is fast, modular and
+//! extensible.  It comes with a price: a lot of details (*that you don't care
+//! about
 //! right now and think they are stupid, until you actually do and then you are
 //! happy that someone thought of them for you*) are being taken into
 //! consideration. Anyway, **if you just want to get a logging to terminal
@@ -73,8 +74,9 @@
 //! # Synchronization via `Mutex`
 //!
 //! This drain synchronizes by wrapping everything in a big mutex (yes,
-//! `Mutex<Drain>` implements a `Drain` trait). This is kind of slow, but in scripting
-//! languages like Ruby or Python pretty much the whole code is running in a one
+//! `Mutex<Drain>` implements a `Drain` trait). This is kind of slow, but in
+//! scripting languages like Ruby or Python pretty much the whole code is
+//! running in a one
 //! huge mutex and noone seems to mind, so I'm sure you're going to get away
 //! with this. Personally, I am a bit sad, that I've spent so much effort to
 //! give you tools to make your code as efficient as possible, and you choose
@@ -102,11 +104,11 @@
 // {{{ Imports & meta
 #![warn(missing_docs)]
 
-extern crate slog;
-extern crate isatty;
 extern crate chrono;
-extern crate thread_local;
+extern crate isatty;
+extern crate slog;
 extern crate term;
+extern crate thread_local;
 
 use slog::*;
 use slog::Drain;
@@ -375,21 +377,21 @@ where
         record: &Record,
         values: &OwnedKVList,
     ) -> io::Result<()> {
-
         self.decorator.with_record(record, values, |decorator| {
-
             let comma_needed =
                 try!(print_msg_header(&*self.fn_timestamp, decorator, record));
             {
-                let mut serializer = Serializer::new(decorator, comma_needed,
-                                                     self.use_original_order);
+                let mut serializer = Serializer::new(
+                    decorator,
+                    comma_needed,
+                    self.use_original_order,
+                );
 
                 try!(record.kv().serialize(record, &mut serializer));
 
                 try!(values.serialize(record, &mut serializer));
 
                 serializer.finish()?;
-
             }
 
             try!(decorator.start_whitespace());
@@ -498,7 +500,6 @@ where
         record: &Record,
         values: &OwnedKVList,
     ) -> io::Result<()> {
-
         self.decorator.with_record(record, values, |decorator| {
             let indent = {
                 let mut history_ref = self.history.borrow_mut();
@@ -520,8 +521,8 @@ where
             let comma_needed =
                 try!(print_msg_header(&*self.fn_timestamp, decorator, record));
             {
-                let mut serializer = Serializer::new(decorator, comma_needed,
-                                                     false);
+                let mut serializer =
+                    Serializer::new(decorator, comma_needed, false);
 
                 try!(record.kv().serialize(record, &mut serializer));
 
@@ -548,12 +549,16 @@ struct Serializer<'a> {
 }
 
 impl<'a> Serializer<'a> {
-    fn new(d: &'a mut RecordDecorator, comma_needed: bool, reverse: bool) -> Self {
+    fn new(
+        d: &'a mut RecordDecorator,
+        comma_needed: bool,
+        reverse: bool,
+    ) -> Self {
         Serializer {
             comma_needed: comma_needed,
             decorator: d,
             reverse: reverse,
-            stack: vec!(),
+            stack: vec![],
         }
     }
 
@@ -720,7 +725,6 @@ impl<'a> CompactFormatSerializer<'a> {
         let mut indent = 0;
 
         for mut buf in self.buf.drain(..).rev() {
-
             let (print, trunc, push) =
                 if let Some(prev) = self.history.get_mut(indent) {
                     if *prev != buf {
@@ -735,7 +739,6 @@ impl<'a> CompactFormatSerializer<'a> {
 
             if push {
                 self.history.push(mem::replace(&mut buf, (vec![], vec![])));
-
             }
 
             if trunc {
@@ -1389,14 +1392,17 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
 // }}}
 
 // {{{ TestStdoutWriter
-/// Replacement for `std::io::stdout()` for when output capturing by rust's test harness is
-/// required.
+/// Replacement for `std::io::stdout()` for when output capturing by rust's test
+/// harness is required.
 pub struct TestStdoutWriter;
 
 impl io::Write for TestStdoutWriter {
     fn write(&mut self, data: &[u8]) -> io::Result<usize> {
-        print!("{}", std::str::from_utf8(data)
-                              .map_err(|x| io::Error::new(io::ErrorKind::InvalidData, x))?);
+        print!(
+            "{}",
+            std::str::from_utf8(data)
+                .map_err(|x| io::Error::new(io::ErrorKind::InvalidData, x))?
+        );
         Ok(data.len())
     }
     fn flush(&mut self) -> io::Result<()> {

@@ -1,7 +1,6 @@
 use slog::*;
 
 pub fn simulate_server(log: Logger) {
-
     let server = log.new(o!("host" => "localhost", "port" => "8080"));
     let peer1 = server.new(o!("peer_addr" => "8.8.8.8", "port" => "18230"));
     let peer2 = server.new(o!("peer_addr" => "82.9.9.9", "port" => "42381"));
@@ -19,5 +18,4 @@ pub fn simulate_server(log: Logger) {
     debug!(peer1, "disconnected");
     crit!(server, "internal error");
     info!(server, "exit");
-
 }
