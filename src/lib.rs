@@ -112,7 +112,6 @@ extern crate thread_local;
 
 use slog::*;
 use slog::Drain;
-
 use std::{fmt, io, mem, sync};
 use std::cell::RefCell;
 use std::io::Write as IoWrite;
@@ -1166,31 +1165,44 @@ enum AnyTerminal {
     Stdout(Box<term::StdoutTerminal>),
     /// Stderr terminal
     Stderr(Box<term::StderrTerminal>),
+    FallbackStdout,
+    FallbackStderr,
+}
+
+impl AnyTerminal {
+    fn should_use_color(&self) -> bool {
+        match *self {
+            AnyTerminal::Stdout(_) => isatty::stdout_isatty(),
+            AnyTerminal::Stderr(_) => isatty::stderr_isatty(),
+            AnyTerminal::FallbackStdout => false,
+            AnyTerminal::FallbackStderr => false,
+        }
+    }
 }
 
 /// `TermDecorator` builder
 pub struct TermDecoratorBuilder {
-    term: Option<AnyTerminal>,
+    use_stderr: bool,
     color: Option<bool>,
 }
 
 impl TermDecoratorBuilder {
     fn new() -> Self {
         TermDecoratorBuilder {
-            term: term::stderr().map(AnyTerminal::Stderr),
+            use_stderr: true,
             color: None,
         }
     }
 
     /// Output to `stderr`
     pub fn stderr(mut self) -> Self {
-        self.term = term::stderr().map(AnyTerminal::Stderr);
+        self.use_stderr = true;
         self
     }
 
     /// Output to `stdout`
     pub fn stdout(mut self) -> Self {
-        self.term = term::stdout().map(AnyTerminal::Stdout);
+        self.use_stderr = false;
         self
     }
 
@@ -1206,41 +1218,47 @@ impl TermDecoratorBuilder {
         self
     }
 
-    /// Build `TermDecorator`
+    /// Try to build `TermDecorator`
     ///
-    /// Return `None` if requested output was not usable (eg. closed stderr)
+    /// Unlike `build` this will not fall-back to raw `stdout`/`stderr`
+    /// if it wasn't able to use terminal and its features directly
+    /// (eg. if `TERM` env. was not set).
     pub fn try_build(self) -> Option<TermDecorator> {
-        let use_color = self.should_use_color();
-        if let Some(io) = self.term {
-            Some(TermDecorator {
-                term: RefCell::new(Some(io)),
-                use_color: use_color,
-            })
+        let io = if self.use_stderr {
+            term::stderr().map(AnyTerminal::Stderr)
         } else {
-            None
-        }
+            term::stdout().map(AnyTerminal::Stdout)
+        };
+
+        io.map(|io| {
+            let use_color = self.color.unwrap_or(io.should_use_color());
+            TermDecorator {
+                use_color: use_color,
+                term: RefCell::new(io),
+            }
+        })
     }
 
     /// Build `TermDecorator`
     ///
-    /// If requested output was not usable (eg. closed stderr), it will return
-    /// `TermDecorator` that discards logging records.
+    /// Unlike `try_build` this it will fall-back to using plain `stdout`/`stderr`
+    /// if it wasn't able to use terminal directly.
     pub fn build(self) -> TermDecorator {
-        let use_color = self.should_use_color();
-        TermDecorator {
-            term: RefCell::new(self.term),
-            use_color: use_color,
-        }
-    }
+        let io = if self.use_stderr {
+            term::stderr()
+                .map(AnyTerminal::Stderr)
+                .unwrap_or(AnyTerminal::FallbackStderr)
+        } else {
+            term::stdout()
+                .map(AnyTerminal::Stdout)
+                .unwrap_or(AnyTerminal::FallbackStdout)
+        };
 
-    fn should_use_color(&self) -> bool {
-        if let Some(color) = self.color {
-            return color;
-        }
-        match self.term {
-            Some(AnyTerminal::Stdout(_)) => isatty::stdout_isatty(),
-            Some(AnyTerminal::Stderr(_)) => isatty::stderr_isatty(),
-            None => false,
+
+        let use_color = self.color.unwrap_or(io.should_use_color());
+        TermDecorator {
+            term: RefCell::new(io),
+            use_color: use_color,
         }
     }
 }
@@ -1253,7 +1271,7 @@ impl TermDecoratorBuilder {
 /// It does not deal with serialization so is `!Sync`. Run in a separate thread
 /// with `slog_async::Async`.
 pub struct TermDecorator {
-    term: RefCell<Option<AnyTerminal>>,
+    term: RefCell<AnyTerminal>,
     use_color: bool,
 }
 
@@ -1290,17 +1308,13 @@ impl Decorator for TermDecorator {
         F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
     {
         let mut term = self.term.borrow_mut();
-        if let Some(term) = term.as_mut() {
-            let mut deco = TermRecordDecorator {
-                term: term,
-                level: record.level(),
-                use_color: self.use_color,
-            };
-            {
-                f(&mut deco)
-            }
-        } else {
-            Ok(())
+        let mut deco = TermRecordDecorator {
+            term: &mut *term,
+            level: record.level(),
+            use_color: self.use_color,
+        };
+        {
+            f(&mut deco)
         }
     }
 }
@@ -1317,6 +1331,8 @@ impl<'a> io::Write for TermRecordDecorator<'a> {
         match self.term {
             &mut AnyTerminal::Stdout(ref mut term) => term.write(buf),
             &mut AnyTerminal::Stderr(ref mut term) => term.write(buf),
+            &mut AnyTerminal::FallbackStdout => std::io::stdout().write(buf),
+            &mut AnyTerminal::FallbackStderr => std::io::stderr().write(buf),
         }
     }
 
@@ -1324,6 +1340,8 @@ impl<'a> io::Write for TermRecordDecorator<'a> {
         match self.term {
             &mut AnyTerminal::Stdout(ref mut term) => term.flush(),
             &mut AnyTerminal::Stderr(ref mut term) => term.flush(),
+            &mut AnyTerminal::FallbackStdout => std::io::stdout().flush(),
+            &mut AnyTerminal::FallbackStderr => std::io::stderr().flush(),
         }
     }
 }
@@ -1349,6 +1367,8 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         match self.term {
             &mut AnyTerminal::Stdout(ref mut term) => term.reset(),
             &mut AnyTerminal::Stderr(ref mut term) => term.reset(),
+            &mut AnyTerminal::FallbackStdout |
+            &mut AnyTerminal::FallbackStderr => Ok(()),
         }.map_err(term_error_to_io_error)
     }
 
@@ -1360,6 +1380,8 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         match self.term {
             &mut AnyTerminal::Stdout(ref mut term) => term.fg(color),
             &mut AnyTerminal::Stderr(ref mut term) => term.fg(color),
+            &mut AnyTerminal::FallbackStdout |
+            &mut AnyTerminal::FallbackStderr => Ok(()),
         }.map_err(term_error_to_io_error)
     }
 
@@ -1382,6 +1404,8 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
                     term.fg(term::color::BRIGHT_WHITE)
                 }
             }
+            &mut AnyTerminal::FallbackStdout |
+            &mut AnyTerminal::FallbackStderr => Ok(()),
         }.map_err(term_error_to_io_error)
     }
 
