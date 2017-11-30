@@ -112,6 +112,7 @@ extern crate thread_local;
 
 use slog::*;
 use slog::Drain;
+use slog::Key;
 use std::{fmt, io, mem, sync};
 use std::cell::RefCell;
 use std::io::Write as IoWrite;
@@ -619,81 +620,81 @@ macro_rules! s(
 
 
 impl<'a> slog::ser::Serializer for Serializer<'a> {
-    fn emit_none(&mut self, key: &str) -> slog::Result {
+    fn emit_none(&mut self, key: Key) -> slog::Result {
         s!(self, key, "None");
         Ok(())
     }
-    fn emit_unit(&mut self, key: &str) -> slog::Result {
+    fn emit_unit(&mut self, key: Key) -> slog::Result {
         s!(self, key, "()");
         Ok(())
     }
 
-    fn emit_bool(&mut self, key: &str, val: bool) -> slog::Result {
+    fn emit_bool(&mut self, key: Key, val: bool) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
 
-    fn emit_char(&mut self, key: &str, val: char) -> slog::Result {
+    fn emit_char(&mut self, key: Key, val: char) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
 
-    fn emit_usize(&mut self, key: &str, val: usize) -> slog::Result {
+    fn emit_usize(&mut self, key: Key, val: usize) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_isize(&mut self, key: &str, val: isize) -> slog::Result {
+    fn emit_isize(&mut self, key: Key, val: isize) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
 
-    fn emit_u8(&mut self, key: &str, val: u8) -> slog::Result {
+    fn emit_u8(&mut self, key: Key, val: u8) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_i8(&mut self, key: &str, val: i8) -> slog::Result {
+    fn emit_i8(&mut self, key: Key, val: i8) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_u16(&mut self, key: &str, val: u16) -> slog::Result {
+    fn emit_u16(&mut self, key: Key, val: u16) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_i16(&mut self, key: &str, val: i16) -> slog::Result {
+    fn emit_i16(&mut self, key: Key, val: i16) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_u32(&mut self, key: &str, val: u32) -> slog::Result {
+    fn emit_u32(&mut self, key: Key, val: u32) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_i32(&mut self, key: &str, val: i32) -> slog::Result {
+    fn emit_i32(&mut self, key: Key, val: i32) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_f32(&mut self, key: &str, val: f32) -> slog::Result {
+    fn emit_f32(&mut self, key: Key, val: f32) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_u64(&mut self, key: &str, val: u64) -> slog::Result {
+    fn emit_u64(&mut self, key: Key, val: u64) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_i64(&mut self, key: &str, val: i64) -> slog::Result {
+    fn emit_i64(&mut self, key: Key, val: i64) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_f64(&mut self, key: &str, val: f64) -> slog::Result {
+    fn emit_f64(&mut self, key: Key, val: f64) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
-    fn emit_str(&mut self, key: &str, val: &str) -> slog::Result {
+    fn emit_str(&mut self, key: Key, val: &str) -> slog::Result {
         s!(self, key, val);
         Ok(())
     }
     fn emit_arguments(
         &mut self,
-        key: &str,
+        key: Key,
         val: &fmt::Arguments,
     ) -> slog::Result {
         s!(self, key, val);
@@ -786,81 +787,81 @@ macro_rules! cs(
 
 
 impl<'a> slog::ser::Serializer for CompactFormatSerializer<'a> {
-    fn emit_none(&mut self, key: &str) -> slog::Result {
+    fn emit_none(&mut self, key: Key) -> slog::Result {
         cs!(self, key, "None");
         Ok(())
     }
-    fn emit_unit(&mut self, key: &str) -> slog::Result {
+    fn emit_unit(&mut self, key: Key) -> slog::Result {
         cs!(self, key, "()");
         Ok(())
     }
 
-    fn emit_bool(&mut self, key: &str, val: bool) -> slog::Result {
+    fn emit_bool(&mut self, key: Key, val: bool) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
 
-    fn emit_char(&mut self, key: &str, val: char) -> slog::Result {
+    fn emit_char(&mut self, key: Key, val: char) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
 
-    fn emit_usize(&mut self, key: &str, val: usize) -> slog::Result {
+    fn emit_usize(&mut self, key: Key, val: usize) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_isize(&mut self, key: &str, val: isize) -> slog::Result {
+    fn emit_isize(&mut self, key: Key, val: isize) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
 
-    fn emit_u8(&mut self, key: &str, val: u8) -> slog::Result {
+    fn emit_u8(&mut self, key: Key, val: u8) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_i8(&mut self, key: &str, val: i8) -> slog::Result {
+    fn emit_i8(&mut self, key: Key, val: i8) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_u16(&mut self, key: &str, val: u16) -> slog::Result {
+    fn emit_u16(&mut self, key: Key, val: u16) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_i16(&mut self, key: &str, val: i16) -> slog::Result {
+    fn emit_i16(&mut self, key: Key, val: i16) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_u32(&mut self, key: &str, val: u32) -> slog::Result {
+    fn emit_u32(&mut self, key: Key, val: u32) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_i32(&mut self, key: &str, val: i32) -> slog::Result {
+    fn emit_i32(&mut self, key: Key, val: i32) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_f32(&mut self, key: &str, val: f32) -> slog::Result {
+    fn emit_f32(&mut self, key: Key, val: f32) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_u64(&mut self, key: &str, val: u64) -> slog::Result {
+    fn emit_u64(&mut self, key: Key, val: u64) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_i64(&mut self, key: &str, val: i64) -> slog::Result {
+    fn emit_i64(&mut self, key: Key, val: i64) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_f64(&mut self, key: &str, val: f64) -> slog::Result {
+    fn emit_f64(&mut self, key: Key, val: f64) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
-    fn emit_str(&mut self, key: &str, val: &str) -> slog::Result {
+    fn emit_str(&mut self, key: Key, val: &str) -> slog::Result {
         cs!(self, key, val);
         Ok(())
     }
     fn emit_arguments(
         &mut self,
-        key: &str,
+        key: Key,
         val: &fmt::Arguments,
     ) -> slog::Result {
         cs!(self, key, val);
