@@ -1379,8 +1379,8 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         }
         let color = TermDecorator::level_to_color(self.level);
         match self.term {
-            &mut AnyTerminal::Stdout(ref mut term) => term.fg(color),
-            &mut AnyTerminal::Stderr(ref mut term) => term.fg(color),
+            &mut AnyTerminal::Stdout(ref mut term) => term.fg(color as term::color::Color),
+            &mut AnyTerminal::Stderr(ref mut term) => term.fg(color as term::color::Color),
             &mut AnyTerminal::FallbackStdout |
             &mut AnyTerminal::FallbackStderr => Ok(()),
         }.map_err(term_error_to_io_error)
