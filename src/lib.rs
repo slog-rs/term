@@ -996,7 +996,7 @@ where
 
 impl<W> Decorator for PlainDecorator<W>
 where
-    W: io::Write + Send + 'static,
+    W: io::Write,
 {
     fn with_record<F>(
         &self,
@@ -1086,7 +1086,7 @@ where
 
 impl<W> Decorator for PlainSyncDecorator<W>
 where
-    W: io::Write + Send + 'static,
+    W: io::Write,
 {
     fn with_record<F>(
         &self,
