@@ -12,7 +12,7 @@ readme = "README.md"
 
 [dependencies]
 slog = "2"
-isatty = "0.1"
+atty = "0.2"
 chrono = "0.4"
 thread_local = "0.3.3"
 term = "0.5.1"

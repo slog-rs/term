@@ -105,7 +105,7 @@
 #![warn(missing_docs)]
 
 extern crate chrono;
-extern crate isatty;
+extern crate atty;
 extern crate slog;
 extern crate term;
 extern crate thread_local;
@@ -1173,8 +1173,8 @@ enum AnyTerminal {
 impl AnyTerminal {
     fn should_use_color(&self) -> bool {
         match *self {
-            AnyTerminal::Stdout(_) => isatty::stdout_isatty(),
-            AnyTerminal::Stderr(_) => isatty::stderr_isatty(),
+            AnyTerminal::Stdout(_) => atty::is(atty::Stream::Stdout),
+            AnyTerminal::Stderr(_) => atty::is(atty::Stream::Stderr),
             AnyTerminal::FallbackStdout => false,
             AnyTerminal::FallbackStderr => false,
         }
