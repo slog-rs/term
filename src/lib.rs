@@ -1232,7 +1232,7 @@ impl TermDecoratorBuilder {
         };
 
         io.map(|io| {
-            let use_color = self.color.unwrap_or(io.should_use_color());
+            let use_color = self.color.unwrap_or_else(|| io.should_use_color());
             TermDecorator {
                 use_color: use_color,
                 term: RefCell::new(io),
@@ -1255,8 +1255,7 @@ impl TermDecoratorBuilder {
                 .unwrap_or(AnyTerminal::FallbackStdout)
         };
 
-
-        let use_color = self.color.unwrap_or(io.should_use_color());
+        let use_color = self.color.unwrap_or_else(|| io.should_use_color());
         TermDecorator {
             term: RefCell::new(io),
             use_color: use_color,
