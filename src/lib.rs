@@ -288,6 +288,7 @@ where
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
     use_original_order: bool,
+    show_message_values: bool,
 }
 
 /// Streamer builder
@@ -298,6 +299,7 @@ where
     decorator: D,
     fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
     original_order: bool,
+    message_values: bool,
 }
 
 impl<D> FullFormatBuilder<D>
@@ -334,12 +336,21 @@ where
         self
     }
 
+    /// Don't separately print key-value pairs embedded in the log message.
+    ///
+    /// Key-value pairs associated with loggers are still printed, if present.
+    pub fn hide_message_values(mut self) -> Self {
+        self.message_values = false;
+        self
+    }
+
     /// Build `FullFormat`
     pub fn build(self) -> FullFormat<D> {
         FullFormat {
             decorator: self.decorator,
             fn_timestamp: self.fn_timestamp,
             use_original_order: self.original_order,
+            show_message_values: self.message_values,
         }
     }
 }
@@ -371,6 +382,7 @@ where
             fn_timestamp: Box::new(timestamp_local),
             decorator: d,
             original_order: false,
+            message_values: true,
         }
     }
 
@@ -389,7 +401,9 @@ where
                     self.use_original_order,
                 );
 
-                try!(record.kv().serialize(record, &mut serializer));
+                if self.show_message_values {
+                    try!(record.kv().serialize(record, &mut serializer));
+                }
 
                 try!(values.serialize(record, &mut serializer));
 
