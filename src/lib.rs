@@ -872,20 +872,20 @@ impl<'a> slog::ser::Serializer for CompactFormatSerializer<'a> {
 
 // {{{ CountingWriter
 // Wrapper for `Write` types that counts total bytes written.
-struct CountingWriter<'a> {
+pub struct CountingWriter<'a> {
     wrapped: &'a mut io::Write,
     count: usize,
 }
 
 impl<'a> CountingWriter<'a> {
-    fn new(wrapped: &'a mut io::Write) -> CountingWriter {
+    pub fn new(wrapped: &'a mut io::Write) -> CountingWriter {
         CountingWriter {
-            wrapped: wrapped,
+            wrapped,
             count: 0,
         }
     }
 
-    fn count(&self) -> usize {
+    pub fn count(&self) -> usize {
         self.count
     }
 }
