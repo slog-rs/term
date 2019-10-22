@@ -250,7 +250,7 @@ impl RecordDecorator for Box<RecordDecorator> {
 
 // {{{ Misc
 /// Returns `true` if message was not empty
-fn print_msg_header(
+pub fn print_msg_header(
     fn_timestamp: &ThreadSafeTimestampFn<Output = io::Result<()>>,
     mut rd: &mut RecordDecorator,
     record: &Record,
@@ -543,7 +543,7 @@ where
 // }}}
 
 // {{{ Serializer
-struct Serializer<'a> {
+pub struct Serializer<'a> {
     comma_needed: bool,
     decorator: &'a mut RecordDecorator,
     reverse: bool,
@@ -551,15 +551,15 @@ struct Serializer<'a> {
 }
 
 impl<'a> Serializer<'a> {
-    fn new(
+    pub fn new(
         d: &'a mut RecordDecorator,
         comma_needed: bool,
         reverse: bool,
     ) -> Self {
         Serializer {
-            comma_needed: comma_needed,
+            comma_needed,
             decorator: d,
-            reverse: reverse,
+            reverse,
             stack: vec![],
         }
     }
@@ -573,7 +573,7 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
-    fn finish(mut self) -> io::Result<()> {
+    pub fn finish(mut self) -> io::Result<()> {
         loop {
             if let Some((k, v)) = self.stack.pop() {
                 self.maybe_print_comma()?;
@@ -705,25 +705,25 @@ impl<'a> slog::ser::Serializer for Serializer<'a> {
 
 // {{{ CompactFormatSerializer
 
-struct CompactFormatSerializer<'a> {
+pub struct CompactFormatSerializer<'a> {
     decorator: &'a mut RecordDecorator,
     history: &'a mut Vec<(Vec<u8>, Vec<u8>)>,
     buf: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 impl<'a> CompactFormatSerializer<'a> {
-    fn new(
+    pub fn new(
         d: &'a mut RecordDecorator,
         history: &'a mut Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Self {
         CompactFormatSerializer {
             decorator: d,
-            history: history,
+            history,
             buf: vec![],
         }
     }
 
-    fn finish(&mut self) -> io::Result<usize> {
+    pub fn finish(&mut self) -> io::Result<usize> {
         let mut indent = 0;
 
         for mut buf in self.buf.drain(..).rev() {
