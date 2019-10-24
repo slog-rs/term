@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 2.4.2 - 2019-10-25
+### Changed
+
+Make public the following elements to be able to reuse for your own implementations:
+
+* `print_msg_header`
+* `Serializer`
+* `Serializer::new`
+* `Serializer.finish()`
+* `CompactFormatSerializer`
+* `CompactFormatSerializer::new`
+* `CompactFormatSerializer.finish()`
+* `CountingWriter`
+* `CountingWriter::new`
+* `CountingWriter.count()`
+
 ## 2.4.1 - 2019-07-10
 ### Changed
 
