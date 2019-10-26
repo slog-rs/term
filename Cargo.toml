@@ -9,6 +9,7 @@ documentation = "https://docs.rs/slog-term"
 homepage = "https://github.com/slog-rs/slog"
 repository = "https://github.com/slog-rs/term"
 readme = "README.md"
+edition = "2018"
 
 [dependencies]
 slog = "2"
