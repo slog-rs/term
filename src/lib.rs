@@ -31,13 +31,13 @@
 //! ```
 //! use slog::*;
 //!
-//!     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
-//!     let logger = Logger::root(
-//!         slog_term::FullFormat::new(plain)
-//!         .build().fuse(), o!()
-//!     );
+//! let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+//! let logger = Logger::root(
+//!     slog_term::FullFormat::new(plain)
+//!     .build().fuse(), o!()
+//! );
 //!
-//!     info!(logger, "Logging ready!");
+//! info!(logger, "Logging ready!");
 //! ```
 //!
 //! # Synchronization via `slog_async`
@@ -49,13 +49,13 @@
 //! ```
 //! use slog::{Drain, o, info};
 //!
-//!     let decorator = slog_term::TermDecorator::new().build();
-//!     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
-//!     let drain = slog_async::Async::new(drain).build().fuse();
+//! let decorator = slog_term::TermDecorator::new().build();
+//! let drain = slog_term::CompactFormat::new(decorator).build().fuse();
+//! let drain = slog_async::Async::new(drain).build().fuse();
 //!
-//!     let log = slog::Logger::root(drain, o!());
+//! let log = slog::Logger::root(drain, o!());
 //!
-//!     info!(log, "Logging ready!");
+//! info!(log, "Logging ready!");
 //! ```
 //!
 //! # Synchronization via `Mutex`
@@ -72,27 +72,27 @@
 //! ```
 //! use slog::{Drain, o, info};
 //!
-//!     let decorator = slog_term::TermDecorator::new().build();
-//!     let drain = slog_term::CompactFormat::new(decorator).build();
-//!     let drain = std::sync::Mutex::new(drain).fuse();
+//! let decorator = slog_term::TermDecorator::new().build();
+//! let drain = slog_term::CompactFormat::new(decorator).build();
+//! let drain = std::sync::Mutex::new(drain).fuse();
 //!
-//!     let log = slog::Logger::root(drain, o!());
+//! let log = slog::Logger::root(drain, o!());
 //!
-//!     info!(log, "Logging ready!");
+//! info!(log, "Logging ready!");
 //! ```
 // }}}
 
 // {{{ Imports & meta
 #![warn(missing_docs)]
 
-use slog::*;
 use slog::Drain;
 use slog::Key;
-use std::{fmt, io, mem, sync};
+use slog::*;
 use std::cell::RefCell;
 use std::io::Write as IoWrite;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::result;
+use std::{fmt, io, mem, sync};
 // }}}
 
 // {{{ Decorator
@@ -319,7 +319,6 @@ where
     }
 }
 
-
 impl<D> Drain for FullFormat<D>
 where
     D: Decorator,
@@ -444,7 +443,6 @@ where
     }
 }
 
-
 impl<D> Drain for CompactFormat<D>
 where
     D: Decorator,
@@ -489,7 +487,6 @@ where
 
                 serializer.finish()?
             };
-
 
             decorator.start_whitespace()?;
 
@@ -597,7 +594,6 @@ macro_rules! s(
         }
     };
 );
-
 
 impl<'a> slog::ser::Serializer for Serializer<'a> {
     fn emit_none(&mut self, key: Key) -> slog::Result {
@@ -767,7 +763,6 @@ macro_rules! cs(
     };
 );
 
-
 impl<'a> slog::ser::Serializer for CompactFormatSerializer<'a> {
     fn emit_none(&mut self, key: Key) -> slog::Result {
         cs!(self, key, "None");
@@ -862,10 +857,7 @@ pub struct CountingWriter<'a> {
 impl<'a> CountingWriter<'a> {
     /// Create `CountingWriter` instance
     pub fn new(wrapped: &'a mut dyn io::Write) -> CountingWriter {
-        CountingWriter {
-            wrapped,
-            count: 0,
-        }
+        CountingWriter { wrapped, count: 0 }
     }
 
     /// Returns the count of the total bytes written.
@@ -900,13 +892,14 @@ impl<'a> io::Write for CountingWriter<'a> {
 /// To satify `slog-rs` thread and unwind safety requirements, the
 /// bounds expressed by this trait need to satisfied for a function
 /// to be used in timestamp formatting.
-pub trait ThreadSafeTimestampFn
-    : Fn(&mut dyn io::Write) -> io::Result<()>
+pub trait ThreadSafeTimestampFn:
+    Fn(&mut dyn io::Write) -> io::Result<()>
     + Send
     + Sync
     + UnwindSafe
     + RefUnwindSafe
-    + 'static {
+    + 'static
+{
 }
 
 impl<F> ThreadSafeTimestampFn for F
@@ -947,12 +940,12 @@ pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
 /// use slog::*;
 /// use slog_async::Async;
 ///
-///    let decorator = slog_term::PlainDecorator::new(std::io::stdout());
-///    let drain = Async::new(
-///            slog_term::FullFormat::new(decorator).build().fuse()
-///        )
-///        .build()
-///        .fuse();
+/// let decorator = slog_term::PlainDecorator::new(std::io::stdout());
+/// let drain = Async::new(
+///        slog_term::FullFormat::new(decorator).build().fuse()
+/// )
+/// .build()
+/// .fuse();
 /// ```
 
 pub struct PlainDecorator<W>(RefCell<W>)
@@ -1022,7 +1015,6 @@ where
     }
 }
 
-
 // }}}
 
 // {{{ PlainSync
@@ -1034,10 +1026,10 @@ where
 /// ```
 /// use slog::*;
 ///
-///     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
-///     let root = Logger::root(
-///         slog_term::FullFormat::new(plain).build().fuse(), o!()
-///     );
+/// let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
+/// let root = Logger::root(
+///     slog_term::FullFormat::new(plain).build().fuse(), o!()
+/// );
 /// ```
 pub struct PlainSyncDecorator<W>(sync::Arc<sync::Mutex<W>>)
 where
@@ -1122,7 +1114,6 @@ where
         Ok(())
     }
 }
-
 
 // }}}
 
@@ -1251,7 +1242,6 @@ impl TermDecorator {
         TermDecoratorBuilder::new()
     }
 
-
     /// `Level` color
     ///
     /// Standard level to Unix color conversion used by `TermDecorator`
@@ -1337,9 +1327,10 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         match self.term {
             &mut AnyTerminal::Stdout(ref mut term) => term.reset(),
             &mut AnyTerminal::Stderr(ref mut term) => term.reset(),
-            &mut AnyTerminal::FallbackStdout |
-            &mut AnyTerminal::FallbackStderr => Ok(()),
-        }.map_err(term_error_to_io_error)
+            &mut AnyTerminal::FallbackStdout
+            | &mut AnyTerminal::FallbackStderr => Ok(()),
+        }
+        .map_err(term_error_to_io_error)
     }
 
     fn start_level(&mut self) -> io::Result<()> {
@@ -1348,11 +1339,16 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         }
         let color = TermDecorator::level_to_color(self.level);
         match self.term {
-            &mut AnyTerminal::Stdout(ref mut term) => term.fg(color as term::color::Color),
-            &mut AnyTerminal::Stderr(ref mut term) => term.fg(color as term::color::Color),
-            &mut AnyTerminal::FallbackStdout |
-            &mut AnyTerminal::FallbackStderr => Ok(()),
-        }.map_err(term_error_to_io_error)
+            &mut AnyTerminal::Stdout(ref mut term) => {
+                term.fg(color as term::color::Color)
+            }
+            &mut AnyTerminal::Stderr(ref mut term) => {
+                term.fg(color as term::color::Color)
+            }
+            &mut AnyTerminal::FallbackStdout
+            | &mut AnyTerminal::FallbackStderr => Ok(()),
+        }
+        .map_err(term_error_to_io_error)
     }
 
     fn start_key(&mut self) -> io::Result<()> {
@@ -1374,9 +1370,10 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
                     term.fg(term::color::BRIGHT_WHITE)
                 }
             }
-            &mut AnyTerminal::FallbackStdout |
-            &mut AnyTerminal::FallbackStderr => Ok(()),
-        }.map_err(term_error_to_io_error)
+            &mut AnyTerminal::FallbackStdout
+            | &mut AnyTerminal::FallbackStderr => Ok(()),
+        }
+        .map_err(term_error_to_io_error)
     }
 
     fn start_msg(&mut self) -> io::Result<()> {
@@ -1421,6 +1418,5 @@ pub fn term_full() -> FullFormat<TermDecorator> {
 }
 
 // }}}
-
 
 // vim: foldmethod=marker foldmarker={{{,}}}
