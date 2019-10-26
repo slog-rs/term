@@ -137,7 +137,7 @@ pub trait Decorator {
         f: F,
     ) -> io::Result<()>
     where
-        F: FnOnce(&mut RecordDecorator) -> io::Result<()>;
+        F: FnOnce(&mut dyn RecordDecorator) -> io::Result<()>;
 }
 
 impl<T: ?Sized> Decorator for Box<T>
@@ -151,7 +151,7 @@ where
         f: F,
     ) -> io::Result<()>
     where
-        F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
+        F: FnOnce(&mut dyn RecordDecorator) -> io::Result<()>,
     {
         (**self).with_record(record, logger_kv, f)
     }
@@ -203,7 +203,7 @@ pub trait RecordDecorator: io::Write {
     }
 }
 
-impl RecordDecorator for Box<RecordDecorator> {
+impl RecordDecorator for Box<dyn RecordDecorator> {
     fn reset(&mut self) -> io::Result<()> {
         (**self).reset()
     }
@@ -251,25 +251,25 @@ impl RecordDecorator for Box<RecordDecorator> {
 // {{{ Misc
 /// Returns `true` if message was not empty
 pub fn print_msg_header(
-    fn_timestamp: &ThreadSafeTimestampFn<Output = io::Result<()>>,
-    mut rd: &mut RecordDecorator,
+    fn_timestamp: &dyn ThreadSafeTimestampFn<Output = io::Result<()>>,
+    mut rd: &mut dyn RecordDecorator,
     record: &Record,
 ) -> io::Result<bool> {
-    try!(rd.start_timestamp());
-    try!(fn_timestamp(&mut rd));
+    rd.start_timestamp()?;
+    fn_timestamp(&mut rd)?;
 
-    try!(rd.start_whitespace());
-    try!(write!(rd, " "));
+    rd.start_whitespace()?;
+    write!(rd, " ")?;
 
-    try!(rd.start_level());
-    try!(write!(rd, "{}", record.level().as_short_str()));
+    rd.start_level()?;
+    write!(rd, "{}", record.level().as_short_str())?;
 
-    try!(rd.start_whitespace());
-    try!(write!(rd, " "));
+    rd.start_whitespace()?;
+    write!(rd, " ")?;
 
-    try!(rd.start_msg());
+    rd.start_msg()?;
     let mut count_rd = CountingWriter::new(&mut rd);
-    try!(write!(count_rd, "{}", record.msg()));
+    write!(count_rd, "{}", record.msg())?;
     Ok(count_rd.count() != 0)
 }
 
@@ -286,7 +286,7 @@ where
     D: Decorator,
 {
     decorator: D,
-    fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
+    fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
     use_original_order: bool,
 }
 
@@ -296,7 +296,7 @@ where
     D: Decorator,
 {
     decorator: D,
-    fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
+    fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
     original_order: bool,
 }
 
@@ -381,7 +381,7 @@ where
     ) -> io::Result<()> {
         self.decorator.with_record(record, values, |decorator| {
             let comma_needed =
-                try!(print_msg_header(&*self.fn_timestamp, decorator, record));
+                print_msg_header(&*self.fn_timestamp, decorator, record)?;
             {
                 let mut serializer = Serializer::new(
                     decorator,
@@ -389,17 +389,17 @@ where
                     self.use_original_order,
                 );
 
-                try!(record.kv().serialize(record, &mut serializer));
+                record.kv().serialize(record, &mut serializer)?;
 
-                try!(values.serialize(record, &mut serializer));
+                values.serialize(record, &mut serializer)?;
 
                 serializer.finish()?;
             }
 
-            try!(decorator.start_whitespace());
-            try!(write!(decorator, "\n"));
+            decorator.start_whitespace()?;
+            write!(decorator, "\n")?;
 
-            try!(decorator.flush());
+            decorator.flush()?;
 
             Ok(())
         })
@@ -421,7 +421,7 @@ where
 {
     decorator: D,
     history: RefCell<Vec<(Vec<u8>, Vec<u8>)>>,
-    fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
+    fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
 
 /// Streamer builder
@@ -430,7 +430,7 @@ where
     D: Decorator,
 {
     decorator: D,
-    fn_timestamp: Box<ThreadSafeTimestampFn<Output = io::Result<()>>>,
+    fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
 }
 
 impl<D> CompactFormatBuilder<D>
@@ -508,9 +508,9 @@ where
                 let mut serializer =
                     CompactFormatSerializer::new(decorator, &mut *history_ref);
 
-                try!(values.serialize(record, &mut serializer));
+                values.serialize(record, &mut serializer)?;
 
-                try!(serializer.finish())
+                serializer.finish()?
             };
 
 
@@ -521,20 +521,20 @@ where
             }
 
             let comma_needed =
-                try!(print_msg_header(&*self.fn_timestamp, decorator, record));
+                print_msg_header(&*self.fn_timestamp, decorator, record)?;
             {
                 let mut serializer =
                     Serializer::new(decorator, comma_needed, false);
 
-                try!(record.kv().serialize(record, &mut serializer));
+                record.kv().serialize(record, &mut serializer)?;
 
                 serializer.finish()?;
             }
 
-            try!(decorator.start_whitespace());
-            try!(write!(decorator, "\n"));
+            decorator.start_whitespace()?;
+            write!(decorator, "\n")?;
 
-            try!(decorator.flush());
+            decorator.flush()?;
 
             Ok(())
         })
@@ -543,16 +543,18 @@ where
 // }}}
 
 // {{{ Serializer
+/// Serializer for the lines
 pub struct Serializer<'a> {
     comma_needed: bool,
-    decorator: &'a mut RecordDecorator,
+    decorator: &'a mut dyn RecordDecorator,
     reverse: bool,
     stack: Vec<(String, String)>,
 }
 
 impl<'a> Serializer<'a> {
+    /// Create `Serializer` instance
     pub fn new(
-        d: &'a mut RecordDecorator,
+        d: &'a mut dyn RecordDecorator,
         comma_needed: bool,
         reverse: bool,
     ) -> Self {
@@ -573,6 +575,7 @@ impl<'a> Serializer<'a> {
         Ok(())
     }
 
+    /// Write out all the whole stack
     pub fn finish(mut self) -> io::Result<()> {
         loop {
             if let Some((k, v)) = self.stack.pop() {
@@ -605,15 +608,15 @@ macro_rules! s(
         if $s.reverse {
             $s.stack.push(($k.into(), format!("{}", $v)));
         } else {
-        try!($s.maybe_print_comma());
-        try!($s.decorator.start_key());
-        try!(write!($s.decorator, "{}", $k));
-        try!($s.decorator.start_separator());
-        try!(write!($s.decorator, ":"));
-        try!($s.decorator.start_whitespace());
-        try!(write!($s.decorator, " "));
-        try!($s.decorator.start_value());
-        try!(write!($s.decorator, "{}", $v));
+        $s.maybe_print_comma()?;
+        $s.decorator.start_key()?;
+        write!($s.decorator, "{}", $k)?;
+        $s.decorator.start_separator()?;
+        write!($s.decorator, ":")?;
+        $s.decorator.start_whitespace()?;
+        write!($s.decorator, " ")?;
+        $s.decorator.start_value()?;
+        write!($s.decorator, "{}", $v)?;
         }
     };
 );
@@ -704,16 +707,17 @@ impl<'a> slog::ser::Serializer for Serializer<'a> {
 // }}}
 
 // {{{ CompactFormatSerializer
-
+/// The Compact format serializer
 pub struct CompactFormatSerializer<'a> {
-    decorator: &'a mut RecordDecorator,
+    decorator: &'a mut dyn RecordDecorator,
     history: &'a mut Vec<(Vec<u8>, Vec<u8>)>,
     buf: Vec<(Vec<u8>, Vec<u8>)>,
 }
 
 impl<'a> CompactFormatSerializer<'a> {
+    /// Create `CompactFormatSerializer` instance
     pub fn new(
-        d: &'a mut RecordDecorator,
+        d: &'a mut dyn RecordDecorator,
         history: &'a mut Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Self {
         CompactFormatSerializer {
@@ -723,6 +727,7 @@ impl<'a> CompactFormatSerializer<'a> {
         }
     }
 
+    /// Write out all the whole stack
     pub fn finish(&mut self) -> io::Result<usize> {
         let mut indent = 0;
 
@@ -750,21 +755,21 @@ impl<'a> CompactFormatSerializer<'a> {
             if print {
                 let &(ref k, ref v) =
                     self.history.get(indent).expect("assertion failed");
-                try!(self.decorator.start_whitespace());
+                self.decorator.start_whitespace()?;
                 for _ in 0..indent {
-                    try!(write!(self.decorator, " "));
+                    write!(self.decorator, " ")?;
                 }
-                try!(self.decorator.start_key());
-                try!(self.decorator.write_all(k));
-                try!(self.decorator.start_separator());
-                try!(write!(self.decorator, ":"));
-                try!(self.decorator.start_whitespace());
-                try!(write!(self.decorator, " "));
-                try!(self.decorator.start_value());
-                try!(self.decorator.write_all(v));
+                self.decorator.start_key()?;
+                self.decorator.write_all(k)?;
+                self.decorator.start_separator()?;
+                write!(self.decorator, ":")?;
+                self.decorator.start_whitespace()?;
+                write!(self.decorator, " ")?;
+                self.decorator.start_value()?;
+                self.decorator.write_all(v)?;
 
-                try!(self.decorator.start_whitespace());
-                try!(write!(self.decorator, "\n"));
+                self.decorator.start_whitespace()?;
+                write!(self.decorator, "\n")?;
             }
 
             indent += 1;
@@ -779,8 +784,8 @@ macro_rules! cs(
 
         let mut k = vec!();
         let mut v = vec!();
-        try!(write!(&mut k, "{}", $k));
-        try!(write!(&mut v, "{}", $v));
+        write!(&mut k, "{}", $k)?;
+        write!(&mut v, "{}", $v)?;
         $s.buf.push((k, v));
     };
 );
@@ -871,20 +876,22 @@ impl<'a> slog::ser::Serializer for CompactFormatSerializer<'a> {
 // }}}
 
 // {{{ CountingWriter
-// Wrapper for `Write` types that counts total bytes written.
+/// Wrapper for `Write` types that counts total bytes written.
 pub struct CountingWriter<'a> {
-    wrapped: &'a mut io::Write,
+    wrapped: &'a mut dyn io::Write,
     count: usize,
 }
 
 impl<'a> CountingWriter<'a> {
-    pub fn new(wrapped: &'a mut io::Write) -> CountingWriter {
+    /// Create `CountingWriter` instance
+    pub fn new(wrapped: &'a mut dyn io::Write) -> CountingWriter {
         CountingWriter {
             wrapped,
             count: 0,
         }
     }
 
+    /// Returns the count of the total bytes written.
     pub fn count(&self) -> usize {
         self.count
     }
@@ -918,7 +925,7 @@ impl<'a> io::Write for CountingWriter<'a> {
 /// bounds expressed by this trait need to satisfied for a function
 /// to be used in timestamp formatting.
 pub trait ThreadSafeTimestampFn
-    : Fn(&mut io::Write) -> io::Result<()>
+    : Fn(&mut dyn io::Write) -> io::Result<()>
     + Send
     + Sync
     + UnwindSafe
@@ -928,7 +935,7 @@ pub trait ThreadSafeTimestampFn
 
 impl<F> ThreadSafeTimestampFn for F
 where
-    F: Fn(&mut io::Write) -> io::Result<()> + Send + Sync,
+    F: Fn(&mut dyn io::Write) -> io::Result<()> + Send + Sync,
     F: UnwindSafe + RefUnwindSafe + 'static,
     F: ?Sized,
 {
@@ -939,14 +946,14 @@ const TIMESTAMP_FORMAT: &'static str = "%b %d %H:%M:%S%.3f";
 /// Default local timezone timestamp function
 ///
 /// The exact format used, is still subject to change.
-pub fn timestamp_local(io: &mut io::Write) -> io::Result<()> {
+pub fn timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
     write!(io, "{}", chrono::Local::now().format(TIMESTAMP_FORMAT))
 }
 
 /// Default UTC timestamp function
 ///
 /// The exact format used, is still subject to change.
-pub fn timestamp_utc(io: &mut io::Write) -> io::Result<()> {
+pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
     write!(io, "{}", chrono::Utc::now().format(TIMESTAMP_FORMAT))
 }
 // }}}
@@ -1005,7 +1012,7 @@ where
         f: F,
     ) -> io::Result<()>
     where
-        F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
+        F: FnOnce(&mut dyn RecordDecorator) -> io::Result<()>,
     {
         f(&mut PlainRecordDecorator(&self.0))
     }
@@ -1095,7 +1102,7 @@ where
         f: F,
     ) -> io::Result<()>
     where
-        F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
+        F: FnOnce(&mut dyn RecordDecorator) -> io::Result<()>,
     {
         f(&mut PlainSyncRecordDecorator {
             io: self.0.clone(),
@@ -1126,11 +1133,11 @@ where
             return Ok(());
         }
 
-        let mut io = try!(self.io.lock().map_err(|_| {
+        let mut io = self.io.lock().map_err(|_| {
             io::Error::new(io::ErrorKind::Other, "mutex locking error")
-        }));
+        })?;
 
-        try!(io.write_all(&self.buf));
+        io.write_all(&self.buf)?;
         self.buf.clear();
         io.flush()
     }
@@ -1305,7 +1312,7 @@ impl Decorator for TermDecorator {
         f: F,
     ) -> io::Result<()>
     where
-        F: FnOnce(&mut RecordDecorator) -> io::Result<()>,
+        F: FnOnce(&mut dyn RecordDecorator) -> io::Result<()>,
     {
         let mut term = self.term.borrow_mut();
         let mut deco = TermRecordDecorator {
