@@ -11,8 +11,8 @@ fn main() {
     let _drain = slog_term::FullFormat::new(decorator).build().fuse();
 
     let decorator = slog_term::PlainDecorator::new(std::io::stdout());
-    let _drain = Async::new(
-        slog_term::FullFormat::new(decorator).build().fuse(),
-    ).build()
-        .fuse();
+    let _drain =
+        Async::new(slog_term::FullFormat::new(decorator).build().fuse())
+            .build()
+            .fuse();
 }
