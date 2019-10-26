@@ -29,13 +29,8 @@
 //! `PlainSyncDecorator`.  The formatting itself is thread-safe.
 //!
 //! ```
-//! #[macro_use]
-//! extern crate slog;
-//! extern crate slog_term;
-//!
 //! use slog::*;
 //!
-//! fn main() {
 //!     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
 //!     let logger = Logger::root(
 //!         slog_term::FullFormat::new(plain)
@@ -43,7 +38,6 @@
 //!     );
 //!
 //!     info!(logger, "Logging ready!");
-//! }
 //! ```
 //!
 //! # Synchronization via `slog_async`
@@ -53,14 +47,8 @@
 //! so no further synchronization is required.
 //!
 //! ```
-//! #[macro_use]
-//! extern crate slog;
-//! extern crate slog_term;
-//! extern crate slog_async;
+//! use slog::{Drain, o, info};
 //!
-//! use slog::Drain;
-//!
-//! fn main() {
 //!     let decorator = slog_term::TermDecorator::new().build();
 //!     let drain = slog_term::CompactFormat::new(decorator).build().fuse();
 //!     let drain = slog_async::Async::new(drain).build().fuse();
@@ -68,7 +56,6 @@
 //!     let log = slog::Logger::root(drain, o!());
 //!
 //!     info!(log, "Logging ready!");
-//! }
 //! ```
 //!
 //! # Synchronization via `Mutex`
@@ -83,13 +70,8 @@
 //! this. ಠ_ಠ . But I'm here to serve, not to tell you what to do.
 //!
 //! ```
-//! #[macro_use]
-//! extern crate slog;
-//! extern crate slog_term;
+//! use slog::{Drain, o, info};
 //!
-//! use slog::Drain;
-//!
-//! fn main() {
 //!     let decorator = slog_term::TermDecorator::new().build();
 //!     let drain = slog_term::CompactFormat::new(decorator).build();
 //!     let drain = std::sync::Mutex::new(drain).fuse();
@@ -97,18 +79,11 @@
 //!     let log = slog::Logger::root(drain, o!());
 //!
 //!     info!(log, "Logging ready!");
-//! }
 //! ```
 // }}}
 
 // {{{ Imports & meta
 #![warn(missing_docs)]
-
-extern crate chrono;
-extern crate atty;
-extern crate slog;
-extern crate term;
-extern crate thread_local;
 
 use slog::*;
 use slog::Drain;
@@ -366,6 +341,7 @@ where
     D: Decorator,
 {
     /// New `TermBuilder`
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(d: D) -> FullFormatBuilder<D> {
         FullFormatBuilder {
             fn_timestamp: Box::new(timestamp_local),
@@ -397,7 +373,7 @@ where
             }
 
             decorator.start_whitespace()?;
-            write!(decorator, "\n")?;
+            writeln!(decorator)?;
 
             decorator.flush()?;
 
@@ -490,6 +466,7 @@ where
     D: Decorator,
 {
     /// New `CompactFormatBuilder`
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(d: D) -> CompactFormatBuilder<D> {
         CompactFormatBuilder {
             fn_timestamp: Box::new(timestamp_local),
@@ -532,7 +509,7 @@ where
             }
 
             decorator.start_whitespace()?;
-            write!(decorator, "\n")?;
+            writeln!(decorator)?;
 
             decorator.flush()?;
 
@@ -769,7 +746,7 @@ impl<'a> CompactFormatSerializer<'a> {
                 self.decorator.write_all(v)?;
 
                 self.decorator.start_whitespace()?;
-                write!(self.decorator, "\n")?;
+                writeln!(self.decorator)?;
             }
 
             indent += 1;
@@ -912,7 +889,6 @@ impl<'a> io::Write for CountingWriter<'a> {
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
         self.wrapped.write_all(buf).map(|_| {
             self.count += buf.len();
-            ()
         })
     }
 }
@@ -941,7 +917,7 @@ where
 {
 }
 
-const TIMESTAMP_FORMAT: &'static str = "%b %d %H:%M:%S%.3f";
+const TIMESTAMP_FORMAT: &str = "%b %d %H:%M:%S%.3f";
 
 /// Default local timezone timestamp function
 ///
@@ -968,15 +944,8 @@ pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
 /// and thus requires only `Send` from `Drain`s it wraps.
 ///
 /// ```
-/// #[macro_use]
-/// extern crate slog;
-/// extern crate slog_term;
-/// extern crate slog_async;
-///
 /// use slog::*;
 /// use slog_async::Async;
-///
-/// fn main() {
 ///
 ///    let decorator = slog_term::PlainDecorator::new(std::io::stdout());
 ///    let drain = Async::new(
@@ -984,7 +953,6 @@ pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
 ///        )
 ///        .build()
 ///        .fuse();
-/// }
 /// ```
 
 pub struct PlainDecorator<W>(RefCell<W>)
@@ -1064,18 +1032,12 @@ where
 /// of synchronizing writes to `io`.
 ///
 /// ```
-/// #[macro_use]
-/// extern crate slog;
-/// extern crate slog_term;
-///
 /// use slog::*;
 ///
-/// fn main() {
 ///     let plain = slog_term::PlainSyncDecorator::new(std::io::stdout());
 ///     let root = Logger::root(
 ///         slog_term::FullFormat::new(plain).build().fuse(), o!()
 ///     );
-/// }
 /// ```
 pub struct PlainSyncDecorator<W>(sync::Arc<sync::Mutex<W>>)
 where
@@ -1241,7 +1203,7 @@ impl TermDecoratorBuilder {
         io.map(|io| {
             let use_color = self.color.unwrap_or_else(|| io.should_use_color());
             TermDecorator {
-                use_color: use_color,
+                use_color,
                 term: RefCell::new(io),
             }
         })
@@ -1265,7 +1227,7 @@ impl TermDecoratorBuilder {
         let use_color = self.color.unwrap_or_else(|| io.should_use_color());
         TermDecorator {
             term: RefCell::new(io),
-            use_color: use_color,
+            use_color,
         }
     }
 }
@@ -1284,6 +1246,7 @@ pub struct TermDecorator {
 
 impl TermDecorator {
     /// Start building `TermDecorator`
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> TermDecoratorBuilder {
         TermDecoratorBuilder::new()
     }
@@ -1335,20 +1298,20 @@ pub struct TermRecordDecorator<'a> {
 
 impl<'a> io::Write for TermRecordDecorator<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match self.term {
-            &mut AnyTerminal::Stdout(ref mut term) => term.write(buf),
-            &mut AnyTerminal::Stderr(ref mut term) => term.write(buf),
-            &mut AnyTerminal::FallbackStdout => std::io::stdout().write(buf),
-            &mut AnyTerminal::FallbackStderr => std::io::stderr().write(buf),
+        match *self.term {
+            AnyTerminal::Stdout(ref mut term) => term.write(buf),
+            AnyTerminal::Stderr(ref mut term) => term.write(buf),
+            AnyTerminal::FallbackStdout => std::io::stdout().write(buf),
+            AnyTerminal::FallbackStderr => std::io::stderr().write(buf),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        match self.term {
-            &mut AnyTerminal::Stdout(ref mut term) => term.flush(),
-            &mut AnyTerminal::Stderr(ref mut term) => term.flush(),
-            &mut AnyTerminal::FallbackStdout => std::io::stdout().flush(),
-            &mut AnyTerminal::FallbackStderr => std::io::stderr().flush(),
+        match *self.term {
+            AnyTerminal::Stdout(ref mut term) => term.flush(),
+            AnyTerminal::Stderr(ref mut term) => term.flush(),
+            AnyTerminal::FallbackStdout => std::io::stdout().flush(),
+            AnyTerminal::FallbackStderr => std::io::stderr().flush(),
         }
     }
 }
