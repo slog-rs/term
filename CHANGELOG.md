@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 2.5.0 - 2020-01-29
+
+* Upgrade to thread_local 1
+* Fix `clippy` warnings on 2018 edition
+* Cargo.toml - 2018 edition
+
 ## 2.4.2 - 2019-10-25
 ### Changed
 
