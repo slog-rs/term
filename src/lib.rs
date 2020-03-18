@@ -676,6 +676,23 @@ impl<'a> slog::ser::Serializer for Serializer<'a> {
         s!(self, key, val);
         Ok(())
     }
+    #[cfg(feature = "nested-values")]
+    fn emit_serde(
+        &mut self,
+        key: Key,
+        val: &dyn slog::SerdeValue,
+    ) -> slog::Result {
+        let mut writer = Vec::new();
+        serde::ser::Serialize::serialize(
+            val.as_serde(),
+            &mut serde_json::Serializer::new(&mut writer),
+        )
+        .map_err(|e| std::io::Error::from(e))?;
+        let val =
+            std::str::from_utf8(&writer).expect("serde JSON is always UTF-8");
+        s!(self, key, val);
+        Ok(())
+    }
 }
 // }}}
 
