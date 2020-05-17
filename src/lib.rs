@@ -1190,7 +1190,7 @@ impl TermDecoratorBuilder {
         self
     }
 
-    /// Force colored output
+    /// Force plain output
     pub fn force_plain(mut self) -> Self {
         self.color = Some(false);
         self
