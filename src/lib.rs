@@ -1140,9 +1140,19 @@ where
 // TODO: https://github.com/Stebalien/term/issues/70
 enum AnyTerminal {
     /// Stdout terminal
-    Stdout(Box<term::StdoutTerminal>),
+    Stdout {
+        term: Box<term::StdoutTerminal>,
+        supports_reset: bool,
+        supports_color: bool,
+        supports_bold: bool,
+    },
     /// Stderr terminal
-    Stderr(Box<term::StderrTerminal>),
+    Stderr {
+        term: Box<term::StderrTerminal>,
+        supports_reset: bool,
+        supports_color: bool,
+        supports_bold: bool,
+    },
     FallbackStdout,
     FallbackStderr,
 }
@@ -1150,8 +1160,8 @@ enum AnyTerminal {
 impl AnyTerminal {
     fn should_use_color(&self) -> bool {
         match *self {
-            AnyTerminal::Stdout(_) => atty::is(atty::Stream::Stdout),
-            AnyTerminal::Stderr(_) => atty::is(atty::Stream::Stderr),
+            AnyTerminal::Stdout { .. } => atty::is(atty::Stream::Stdout),
+            AnyTerminal::Stderr { .. } => atty::is(atty::Stream::Stderr),
             AnyTerminal::FallbackStdout => false,
             AnyTerminal::FallbackStderr => false,
         }
@@ -1203,9 +1213,29 @@ impl TermDecoratorBuilder {
     /// (eg. if `TERM` env. was not set).
     pub fn try_build(self) -> Option<TermDecorator> {
         let io = if self.use_stderr {
-            term::stderr().map(AnyTerminal::Stderr)
+            term::stderr().map(|t| {
+                let supports_reset = t.supports_reset();
+                let supports_color = t.supports_color();
+                let supports_bold = t.supports_attr(term::Attr::Bold);
+                AnyTerminal::Stderr {
+                    term: t,
+                    supports_reset,
+                    supports_color,
+                    supports_bold,
+                }
+            })
         } else {
-            term::stdout().map(AnyTerminal::Stdout)
+            term::stdout().map(|t| {
+                let supports_reset = t.supports_reset();
+                let supports_color = t.supports_color();
+                let supports_bold = t.supports_attr(term::Attr::Bold);
+                AnyTerminal::Stdout {
+                    term: t,
+                    supports_reset,
+                    supports_color,
+                    supports_bold,
+                }
+            })
         };
 
         io.map(|io| {
@@ -1224,11 +1254,31 @@ impl TermDecoratorBuilder {
     pub fn build(self) -> TermDecorator {
         let io = if self.use_stderr {
             term::stderr()
-                .map(AnyTerminal::Stderr)
+                .map(|t| {
+                    let supports_reset = t.supports_reset();
+                    let supports_color = t.supports_color();
+                    let supports_bold = t.supports_attr(term::Attr::Bold);
+                    AnyTerminal::Stderr {
+                        term: t,
+                        supports_reset,
+                        supports_color,
+                        supports_bold,
+                    }
+                })
                 .unwrap_or(AnyTerminal::FallbackStderr)
         } else {
             term::stdout()
-                .map(AnyTerminal::Stdout)
+                .map(|t| {
+                    let supports_reset = t.supports_reset();
+                    let supports_color = t.supports_color();
+                    let supports_bold = t.supports_attr(term::Attr::Bold);
+                    AnyTerminal::Stdout {
+                        term: t,
+                        supports_reset,
+                        supports_color,
+                        supports_bold,
+                    }
+                })
                 .unwrap_or(AnyTerminal::FallbackStdout)
         };
 
@@ -1306,8 +1356,8 @@ pub struct TermRecordDecorator<'a> {
 impl<'a> io::Write for TermRecordDecorator<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match *self.term {
-            AnyTerminal::Stdout(ref mut term) => term.write(buf),
-            AnyTerminal::Stderr(ref mut term) => term.write(buf),
+            AnyTerminal::Stdout { ref mut term, .. } => term.write(buf),
+            AnyTerminal::Stderr { ref mut term, .. } => term.write(buf),
             AnyTerminal::FallbackStdout => std::io::stdout().write(buf),
             AnyTerminal::FallbackStderr => std::io::stderr().write(buf),
         }
@@ -1315,8 +1365,8 @@ impl<'a> io::Write for TermRecordDecorator<'a> {
 
     fn flush(&mut self) -> io::Result<()> {
         match *self.term {
-            AnyTerminal::Stdout(ref mut term) => term.flush(),
-            AnyTerminal::Stderr(ref mut term) => term.flush(),
+            AnyTerminal::Stdout { ref mut term, .. } => term.flush(),
+            AnyTerminal::Stderr { ref mut term, .. } => term.flush(),
             AnyTerminal::FallbackStdout => std::io::stdout().flush(),
             AnyTerminal::FallbackStderr => std::io::stderr().flush(),
         }
@@ -1342,22 +1392,17 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
             return Ok(());
         }
         match self.term {
-            &mut AnyTerminal::Stdout(ref mut term) => {
-                if term.supports_reset() {
-                    term.reset()
-                } else {
-                    Ok(())
-                }
-            }
-            &mut AnyTerminal::Stderr(ref mut term) => {
-                if term.supports_reset() {
-                    term.reset()
-                } else {
-                    Ok(())
-                }
-            }
-            &mut AnyTerminal::FallbackStdout
-            | &mut AnyTerminal::FallbackStderr => Ok(()),
+            &mut AnyTerminal::Stdout {
+                ref mut term,
+                supports_reset,
+                ..
+            } if supports_reset => term.reset(),
+            &mut AnyTerminal::Stderr {
+                ref mut term,
+                supports_reset,
+                ..
+            } if supports_reset => term.reset(),
+            _ => Ok(()),
         }
         .map_err(term_error_to_io_error)
     }
@@ -1368,22 +1413,17 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         }
         let color = TermDecorator::level_to_color(self.level);
         match self.term {
-            &mut AnyTerminal::Stdout(ref mut term) => {
-                if term.supports_color() {
-                    term.fg(color as term::color::Color)
-                } else {
-                    Ok(())
-                }
-            }
-            &mut AnyTerminal::Stderr(ref mut term) => {
-                if term.supports_color() {
-                    term.fg(color as term::color::Color)
-                } else {
-                    Ok(())
-                }
-            }
-            &mut AnyTerminal::FallbackStdout
-            | &mut AnyTerminal::FallbackStderr => Ok(()),
+            &mut AnyTerminal::Stdout {
+                ref mut term,
+                supports_color,
+                ..
+            } if supports_color => term.fg(color as term::color::Color),
+            &mut AnyTerminal::Stderr {
+                ref mut term,
+                supports_color,
+                ..
+            } if supports_color => term.fg(color as term::color::Color),
+            _ => Ok(()),
         }
         .map_err(term_error_to_io_error)
     }
@@ -1393,19 +1433,29 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
             return Ok(());
         }
         match self.term {
-            &mut AnyTerminal::Stdout(ref mut term) => {
-                if term.supports_attr(term::Attr::Bold) {
+            &mut AnyTerminal::Stdout {
+                ref mut term,
+                supports_color,
+                supports_bold,
+                ..
+            } => {
+                if supports_bold {
                     term.attr(term::Attr::Bold)
-                } else if term.supports_color() {
+                } else if supports_color {
                     term.fg(term::color::BRIGHT_WHITE)
                 } else {
                     Ok(())
                 }
             }
-            &mut AnyTerminal::Stderr(ref mut term) => {
-                if term.supports_attr(term::Attr::Bold) {
+            &mut AnyTerminal::Stderr {
+                ref mut term,
+                supports_color,
+                supports_bold,
+                ..
+            } => {
+                if supports_bold {
                     term.attr(term::Attr::Bold)
-                } else if term.supports_color() {
+                } else if supports_color {
                     term.fg(term::color::BRIGHT_WHITE)
                 } else {
                     Ok(())
