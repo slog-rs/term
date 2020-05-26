@@ -1478,6 +1478,31 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
 // {{{ TestStdoutWriter
 /// Replacement for `std::io::stdout()` for when output capturing by rust's test
 /// harness is required.
+///
+/// # Note
+///
+/// Due to the way that output capturing works in Rust, using this class has no effect
+/// if the logger is later passed to another thread that is not controlled by Rust's
+/// testing framework.
+/// See [rust-lang/rust#42474](https://github.com/rust-lang/rust/issues/42474) for reference.
+///
+/// For this reason, combining this drain with [Async](https://github.com/slog-rs/async), for example, has no effect.
+///
+/// # Example
+///
+/// ```
+/// # use slog::{Drain, info, o, Logger};
+/// #[test]
+/// fn test_logger() {
+///     let logger = {
+///         let decorator = slog_term::PlainSyncDecorator::new(slog_term::TestStdoutWriter);
+///         let drain = slog_term::FullFormat::new(decorator).build().fuse();
+///
+///         Logger::root_typed(drain, o!())
+///     };
+///     info!(logger, "Hi from logger test");
+/// }
+/// ```
 pub struct TestStdoutWriter;
 
 impl io::Write for TestStdoutWriter {
@@ -1510,4 +1535,18 @@ pub fn term_full() -> FullFormat<TermDecorator> {
 
 // }}}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_logger() {
+        let logger = {
+            let decorator = PlainSyncDecorator::new(TestStdoutWriter);
+            let drain = FullFormat::new(decorator).build().fuse();
+
+            slog::Logger::root_typed(drain, o!())
+        };
+        info!(logger, "Hi from logger test");
+    }
+}
 // vim: foldmethod=marker foldmarker={{{,}}}
