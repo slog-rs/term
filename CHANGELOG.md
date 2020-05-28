@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 2.6.0 - 2020-05-28
+
+* Fix detection of terminals without color support
+* Add support for slog/nested-values
+* Documentation fixes
+
 ## 2.5.0 - 2020-01-29
 
 * Upgrade to thread_local 1
