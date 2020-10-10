@@ -239,6 +239,7 @@ pub fn print_msg_header(
     fn_timestamp: &dyn ThreadSafeTimestampFn<Output = io::Result<()>>,
     mut rd: &mut dyn RecordDecorator,
     record: &Record,
+    use_file_location: bool,
 ) -> io::Result<bool> {
     rd.start_timestamp()?;
     fn_timestamp(&mut rd)?;
@@ -249,14 +250,16 @@ pub fn print_msg_header(
     rd.start_level()?;
     write!(rd, "{}", record.level().as_short_str())?;
 
-    rd.start_location()?;
-    write!(
-        rd,
-        "[{}:{}:{}]",
-        record.location().file,
-        record.location().line,
-        record.location().column
-    )?;
+    if use_file_location {
+        rd.start_location()?;
+        write!(
+            rd,
+            "[{}:{}:{}]",
+            record.location().file,
+            record.location().line,
+            record.location().column
+        )?;
+    }
 
     rd.start_whitespace()?;
     write!(rd, " ")?;
@@ -282,6 +285,7 @@ where
     decorator: D,
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
     use_original_order: bool,
+    use_file_location: bool,
 }
 
 /// Streamer builder
@@ -292,6 +296,7 @@ where
     decorator: D,
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
     original_order: bool,
+    file_location: bool,
 }
 
 impl<D> FullFormatBuilder<D>
@@ -319,6 +324,12 @@ where
         self
     }
 
+    /// Enable the file location in log in this format [file:line:column]
+    pub fn use_file_location(mut self) -> Self {
+        self.file_location = true;
+        self
+    }
+
     /// Use the original ordering of key-value pairs
     ///
     /// By default, key-values are printed in a reversed order. This option will
@@ -334,6 +345,7 @@ where
             decorator: self.decorator,
             fn_timestamp: self.fn_timestamp,
             use_original_order: self.original_order,
+            use_file_location: self.file_location,
         }
     }
 }
@@ -365,6 +377,7 @@ where
             fn_timestamp: Box::new(timestamp_local),
             decorator: d,
             original_order: false,
+            file_location: false,
         }
     }
 
@@ -374,8 +387,12 @@ where
         values: &OwnedKVList,
     ) -> io::Result<()> {
         self.decorator.with_record(record, values, |decorator| {
-            let comma_needed =
-                print_msg_header(&*self.fn_timestamp, decorator, record)?;
+            let comma_needed = print_msg_header(
+                &*self.fn_timestamp,
+                decorator,
+                record,
+                self.use_file_location,
+            )?;
             {
                 let mut serializer = Serializer::new(
                     decorator,
@@ -513,8 +530,12 @@ where
                 write!(decorator, " ")?;
             }
 
-            let comma_needed =
-                print_msg_header(&*self.fn_timestamp, decorator, record)?;
+            let comma_needed = print_msg_header(
+                &*self.fn_timestamp,
+                decorator,
+                record,
+                false,
+            )?;
             {
                 let mut serializer =
                     Serializer::new(decorator, comma_needed, false);
@@ -1410,13 +1431,13 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
         if !self.use_color {
             return Ok(());
         }
-        match self.term {
-            &mut AnyTerminal::Stdout {
+        match *self.term {
+            AnyTerminal::Stdout {
                 ref mut term,
                 supports_reset,
                 ..
             } if supports_reset => term.reset(),
-            &mut AnyTerminal::Stderr {
+            AnyTerminal::Stderr {
                 ref mut term,
                 supports_reset,
                 ..
@@ -1431,13 +1452,13 @@ impl<'a> RecordDecorator for TermRecordDecorator<'a> {
             return Ok(());
         }
         let color = TermDecorator::level_to_color(self.level);
-        match self.term {
-            &mut AnyTerminal::Stdout {
+        match *self.term {
+            AnyTerminal::Stdout {
                 ref mut term,
                 supports_color,
                 ..
             } if supports_color => term.fg(color as term::color::Color),
-            &mut AnyTerminal::Stderr {
+            AnyTerminal::Stderr {
                 ref mut term,
                 supports_color,
                 ..
