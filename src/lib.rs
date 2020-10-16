@@ -272,6 +272,44 @@ pub fn print_msg_header(
 
 // }}}
 
+// {{{ Header Printer
+/// Threadsafe header formatting function type
+///
+/// To satify `slog-rs` thread and unwind safety requirements, the
+/// bounds expressed by this trait need to satisfied for a function
+/// to be used in timestamp formatting.
+pub trait ThreadSafeHeaderFn:
+    Fn(
+        &dyn ThreadSafeTimestampFn<Output = io::Result<()>>,
+        &mut dyn RecordDecorator,
+        &Record,
+        bool,
+    ) -> io::Result<bool>
+    + Send
+    + Sync
+    + UnwindSafe
+    + RefUnwindSafe
+    + 'static
+{
+}
+
+impl<F> ThreadSafeHeaderFn for F
+where
+    F: Fn(
+            &dyn ThreadSafeTimestampFn<Output = io::Result<()>>,
+            &mut dyn RecordDecorator,
+            &Record,
+            bool,
+        ) -> io::Result<bool>
+        + Send
+        + Sync,
+    F: UnwindSafe + RefUnwindSafe + 'static,
+    F: ?Sized,
+{
+}
+
+// }}}
+
 // {{{ Term
 /// Terminal-output formatting `Drain`
 ///
@@ -286,6 +324,7 @@ where
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
     use_original_order: bool,
     use_file_location: bool,
+    header_printer: Option<Box<dyn ThreadSafeHeaderFn>>,
 }
 
 /// Streamer builder
@@ -297,6 +336,7 @@ where
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
     original_order: bool,
     file_location: bool,
+    header_printer: Option<Box<dyn ThreadSafeHeaderFn>>,
 }
 
 impl<D> FullFormatBuilder<D>
@@ -339,6 +379,17 @@ where
         self
     }
 
+    /// Provide a function that print the header
+    ///
+    /// If not used, `slog_term::print_msg_header` will be used
+    pub fn use_custom_header_print<F>(mut self, f: F) -> Self
+    where
+        F: ThreadSafeHeaderFn,
+    {
+        self.header_printer = Some(Box::new(f));
+        self
+    }
+
     /// Build `FullFormat`
     pub fn build(self) -> FullFormat<D> {
         FullFormat {
@@ -346,6 +397,7 @@ where
             fn_timestamp: self.fn_timestamp,
             use_original_order: self.original_order,
             use_file_location: self.file_location,
+            header_printer: self.header_printer,
         }
     }
 }
@@ -378,6 +430,7 @@ where
             decorator: d,
             original_order: false,
             file_location: false,
+            header_printer: None,
         }
     }
 
@@ -387,12 +440,21 @@ where
         values: &OwnedKVList,
     ) -> io::Result<()> {
         self.decorator.with_record(record, values, |decorator| {
-            let comma_needed = print_msg_header(
-                &*self.fn_timestamp,
-                decorator,
-                record,
-                self.use_file_location,
-            )?;
+            let comma_needed = match &self.header_printer {
+                Some(header_printer) => header_printer(
+                    &*self.fn_timestamp,
+                    decorator,
+                    record,
+                    self.use_file_location,
+                )?,
+                None => print_msg_header(
+                    &*self.fn_timestamp,
+                    decorator,
+                    record,
+                    self.use_file_location,
+                )?,
+            };
+
             {
                 let mut serializer = Serializer::new(
                     decorator,
@@ -433,6 +495,7 @@ where
     decorator: D,
     history: RefCell<Vec<(Vec<u8>, Vec<u8>)>>,
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
+    header_printer: Option<Box<dyn ThreadSafeHeaderFn>>,
 }
 
 /// Streamer builder
@@ -442,6 +505,7 @@ where
 {
     decorator: D,
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
+    header_printer: Option<Box<dyn ThreadSafeHeaderFn>>,
 }
 
 impl<D> CompactFormatBuilder<D>
@@ -469,12 +533,24 @@ where
         self
     }
 
+    /// Provide a function that print the header
+    ///
+    /// If not used, `slog_term::print_msg_header` will be used
+    pub fn use_custom_header_print<F>(mut self, f: F) -> Self
+    where
+        F: ThreadSafeHeaderFn,
+    {
+        self.header_printer = Some(Box::new(f));
+        self
+    }
+
     /// Build the streamer
     pub fn build(self) -> CompactFormat<D> {
         CompactFormat {
             decorator: self.decorator,
             fn_timestamp: self.fn_timestamp,
             history: RefCell::new(vec![]),
+            header_printer: self.header_printer,
         }
     }
 }
@@ -505,6 +581,7 @@ where
         CompactFormatBuilder {
             fn_timestamp: Box::new(timestamp_local),
             decorator: d,
+            header_printer: None,
         }
     }
 
@@ -530,12 +607,21 @@ where
                 write!(decorator, " ")?;
             }
 
-            let comma_needed = print_msg_header(
-                &*self.fn_timestamp,
-                decorator,
-                record,
-                false,
-            )?;
+            let comma_needed = match &self.header_printer {
+                Some(header_printer) => header_printer(
+                    &*self.fn_timestamp,
+                    decorator,
+                    record,
+                    false,
+                )?,
+                None => print_msg_header(
+                    &*self.fn_timestamp,
+                    decorator,
+                    record,
+                    false,
+                )?,
+            };
+
             {
                 let mut serializer =
                     Serializer::new(decorator, comma_needed, false);
