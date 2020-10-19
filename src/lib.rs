@@ -324,7 +324,7 @@ where
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
     use_original_order: bool,
     use_file_location: bool,
-    header_printer: Option<Box<dyn ThreadSafeHeaderFn>>,
+    header_printer: Box<dyn ThreadSafeHeaderFn>,
 }
 
 /// Streamer builder
@@ -336,7 +336,7 @@ where
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
     original_order: bool,
     file_location: bool,
-    header_printer: Option<Box<dyn ThreadSafeHeaderFn>>,
+    header_printer: Box<dyn ThreadSafeHeaderFn>,
 }
 
 impl<D> FullFormatBuilder<D>
@@ -381,12 +381,60 @@ where
 
     /// Provide a function that print the header
     ///
-    /// If not used, `slog_term::print_msg_header` will be used
+    /// If not used, `slog_term::print_msg_header` will be used.
+    ///
+    /// The header is the part before the log message and key-values. It usually contains the time,
+    /// the log level.
+    ///
+    /// The default function:
+    /// ```
+    /// pub fn print_msg_header(
+    ///     fn_timestamp: &dyn ThreadSafeTimestampFn<Output = io::Result<()>>,
+    ///     mut rd: &mut dyn RecordDecorator,
+    ///     record: &Record,
+    ///     use_file_location: bool,
+    /// ) -> io::Result<bool> {
+    ///     rd.start_timestamp()?;
+    ///     fn_timestamp(&mut rd)?;
+    ///
+    ///     rd.start_whitespace()?;
+    ///     write!(rd, " ")?;
+    ///
+    ///     rd.start_level()?;
+    ///     write!(rd, "{}", record.level().as_short_str())?;
+    ///
+    ///     if use_file_location {
+    ///         rd.start_location()?;
+    ///         write!(
+    ///             rd,
+    ///             "[{}:{}:{}]",
+    ///             record.location().file,
+    ///             record.location().line,
+    ///             record.location().column
+    ///         )?;
+    ///     }
+    ///
+    ///     rd.start_whitespace()?;
+    ///     write!(rd, " ")?;
+    ///
+    ///     rd.start_msg()?;
+    ///     let mut count_rd = CountingWriter::new(&mut rd);
+    ///     write!(count_rd, "{}", record.msg())?;
+    ///     Ok(count_rd.count() != 0)
+    /// }
+    /// ```
+    ///
+    /// produces this output:
+    /// ```
+    /// Oct 19 09:20:37.962 INFO an event log, my_key: my_value
+    /// ```
+    ///
+    /// the `Oct 19 09:20:37.962 INFO` part is the header.
     pub fn use_custom_header_print<F>(mut self, f: F) -> Self
     where
         F: ThreadSafeHeaderFn,
     {
-        self.header_printer = Some(Box::new(f));
+        self.header_printer = Box::new(f);
         self
     }
 
@@ -430,7 +478,7 @@ where
             decorator: d,
             original_order: false,
             file_location: false,
-            header_printer: None,
+            header_printer: Box::new(print_msg_header),
         }
     }
 
@@ -440,20 +488,13 @@ where
         values: &OwnedKVList,
     ) -> io::Result<()> {
         self.decorator.with_record(record, values, |decorator| {
-            let comma_needed = match &self.header_printer {
-                Some(header_printer) => header_printer(
-                    &*self.fn_timestamp,
-                    decorator,
-                    record,
-                    self.use_file_location,
-                )?,
-                None => print_msg_header(
-                    &*self.fn_timestamp,
-                    decorator,
-                    record,
-                    self.use_file_location,
-                )?,
-            };
+            let header_printer = &self.header_printer;
+            let comma_needed = header_printer(
+                &*self.fn_timestamp,
+                decorator,
+                record,
+                self.use_file_location,
+            )?;
 
             {
                 let mut serializer = Serializer::new(
