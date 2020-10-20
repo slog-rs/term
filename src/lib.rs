@@ -536,7 +536,7 @@ where
     decorator: D,
     history: RefCell<Vec<(Vec<u8>, Vec<u8>)>>,
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
-    header_printer: Option<Box<dyn ThreadSafeHeaderFn>>,
+    header_printer: Box<dyn ThreadSafeHeaderFn>,
 }
 
 /// Streamer builder
@@ -546,7 +546,7 @@ where
 {
     decorator: D,
     fn_timestamp: Box<dyn ThreadSafeTimestampFn<Output = io::Result<()>>>,
-    header_printer: Option<Box<dyn ThreadSafeHeaderFn>>,
+    header_printer: Box<dyn ThreadSafeHeaderFn>,
 }
 
 impl<D> CompactFormatBuilder<D>
@@ -581,7 +581,7 @@ where
     where
         F: ThreadSafeHeaderFn,
     {
-        self.header_printer = Some(Box::new(f));
+        self.header_printer = Box::new(f);
         self
     }
 
@@ -622,7 +622,7 @@ where
         CompactFormatBuilder {
             fn_timestamp: Box::new(timestamp_local),
             decorator: d,
-            header_printer: None,
+            header_printer: Box::new(print_msg_header),
         }
     }
 
@@ -648,20 +648,9 @@ where
                 write!(decorator, " ")?;
             }
 
-            let comma_needed = match &self.header_printer {
-                Some(header_printer) => header_printer(
-                    &*self.fn_timestamp,
-                    decorator,
-                    record,
-                    false,
-                )?,
-                None => print_msg_header(
-                    &*self.fn_timestamp,
-                    decorator,
-                    record,
-                    false,
-                )?,
-            };
+            let header_printer = &self.header_printer;
+            let comma_needed =
+                header_printer(&*self.fn_timestamp, decorator, record, false)?;
 
             {
                 let mut serializer =
