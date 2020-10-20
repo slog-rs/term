@@ -387,7 +387,7 @@ where
     /// the log level.
     ///
     /// The default function:
-    /// ```
+    /// ```compile_fail
     /// pub fn print_msg_header(
     ///     fn_timestamp: &dyn ThreadSafeTimestampFn<Output = io::Result<()>>,
     ///     mut rd: &mut dyn RecordDecorator,
@@ -425,7 +425,7 @@ where
     /// ```
     ///
     /// produces this output:
-    /// ```
+    /// ```text
     /// Oct 19 09:20:37.962 INFO an event log, my_key: my_value
     /// ```
     ///
