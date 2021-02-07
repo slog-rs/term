@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 276.0 - 2021-02-06
+### Added
+
+* option in full format builder to enable file location
+* `print_msg_header` customization
+
 ## 2.6.0 - 2020-05-28
 
 * Fix detection of terminals without color support
