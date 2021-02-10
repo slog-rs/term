@@ -4,7 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## 276.0 - 2021-02-06
+## 2.8.0 - 2021-02-10
+### Changed
+
+* BREAKING: bump MRSV to 1.36
+* update `term` dependency
+
+## 2.7.0 - 2021-02-06
 ### Added
 
 * option in full format builder to enable file location
