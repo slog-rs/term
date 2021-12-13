@@ -314,7 +314,7 @@ where
 /// Terminal-output formatting `Drain`
 ///
 /// **Note**: logging to `FullFormat` drain is thread-safe, since every
-/// line of output is formatted indecently. However, the underlying
+/// line of output is formatted independently. However, the underlying
 /// IO, needs to be synchronized.
 pub struct FullFormat<D>
 where
