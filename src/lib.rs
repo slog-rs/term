@@ -1089,14 +1089,16 @@ const TIMESTAMP_FORMAT: &str = "%b %d %H:%M:%S%.3f";
 ///
 /// The exact format used, is still subject to change.
 pub fn timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
-    write!(io, "{}", chrono::Local::now().format(TIMESTAMP_FORMAT))
+    let now: time::OffsetDateTime = std::time::SystemTime::now().into();
+    write!(io, "{}", now.format(TIMESTAMP_FORMAT))
 }
 
 /// Default UTC timestamp function
 ///
 /// The exact format used, is still subject to change.
 pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
-    write!(io, "{}", chrono::Utc::now().format(TIMESTAMP_FORMAT))
+    let now = time::OffsetDateTime::now_utc();
+    write!(io, "{}", now.format(TIMESTAMP_FORMAT))
 }
 // }}}
 
