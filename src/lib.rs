@@ -1292,22 +1292,11 @@ where
 
 // {{{ TermDecorator
 
-/// Any type of a terminal supported by `term` crate
-// TODO: https://github.com/Stebalien/term/issues/70
 enum AnyTerminal {
-    /// Stdout terminal
-    Stdout {
-        term: Box<term::StdoutTerminal>,
-        supports_reset: bool,
-        supports_color: bool,
-        supports_bold: bool,
-    },
-    /// Stderr terminal
-    Stderr {
-        term: Box<term::StderrTerminal>,
-        supports_reset: bool,
-        supports_color: bool,
-        supports_bold: bool,
+    /// A terminal that supports colors (via `termcolor::WriteColor`)
+    Colored {
+        term: Box<dyn termcolor::WriteColor>,
+        should_use_color: bool,
     },
     FallbackStdout,
     FallbackStderr,
@@ -1316,8 +1305,7 @@ enum AnyTerminal {
 impl AnyTerminal {
     fn should_use_color(&self) -> bool {
         match *self {
-            AnyTerminal::Stdout { .. } => atty::is(atty::Stream::Stdout),
-            AnyTerminal::Stderr { .. } => atty::is(atty::Stream::Stderr),
+            AnyTerminal::Colored { ref term, should_use_color } => term.supports_color() && should_use_color, 
             AnyTerminal::FallbackStdout => false,
             AnyTerminal::FallbackStderr => false,
         }
@@ -1362,37 +1350,17 @@ impl TermDecoratorBuilder {
         self
     }
 
+    fn _build(self, fallback: bool) -> result::Result<TermDecorator, UnsupportedTerminalError> {
+        todo!()
+    }
+
     /// Try to build `TermDecorator`
     ///
     /// Unlike `build` this will not fall-back to raw `stdout`/`stderr`
     /// if it wasn't able to use terminal and its features directly
     /// (eg. if `TERM` env. was not set).
     pub fn try_build(self) -> Option<TermDecorator> {
-        let io = if self.use_stderr {
-            term::stderr().map(|t| {
-                let supports_reset = t.supports_reset();
-                let supports_color = t.supports_color();
-                let supports_bold = t.supports_attr(term::Attr::Bold);
-                AnyTerminal::Stderr {
-                    term: t,
-                    supports_reset,
-                    supports_color,
-                    supports_bold,
-                }
-            })
-        } else {
-            term::stdout().map(|t| {
-                let supports_reset = t.supports_reset();
-                let supports_color = t.supports_color();
-                let supports_bold = t.supports_attr(term::Attr::Bold);
-                AnyTerminal::Stdout {
-                    term: t,
-                    supports_reset,
-                    supports_color,
-                    supports_bold,
-                }
-            })
-        };
+        let io = if todo!();
 
         io.map(|io| {
             let use_color = self.color.unwrap_or_else(|| io.should_use_color());
@@ -1478,6 +1446,17 @@ impl TermDecorator {
             Level::Trace => 4,
         }
     }
+}
+
+/// An error indicating that a terminal doesn't support the requested
+/// features (but they were required).
+///
+/// This typically happens with color support (specifically on windows)
+#[derive(Debug, thiserror::Error)]
+#[error("Terminal {name:?} doesn't support {feature_name}")]
+pub struct UnsupportedTerminalError {
+    name: std::borrow::Cow<'static, str>,
+    feature_name: &'static str
 }
 
 impl Decorator for TermDecorator {
