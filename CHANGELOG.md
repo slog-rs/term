@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## 2.8.1 - 2022-02-01
+### Fixed
+
+* Disable default features on chrono to address RUSTSEC-2020-0071 aka CVE-2020-26235
+* Use SPDX compliant license name
+
 ## 2.8.0 - 2021-02-10
 ### Changed
 
