@@ -4,7 +4,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## 2.8.1 - 2022-02-01
+<!-- next-url -->
+## [Unreleased](https://github.com/slog-rs/term/compare/v2.8.0...HEAD) - ReleaseDate
 ### Fixed
 
 * Disable default features on chrono to address RUSTSEC-2020-0071 aka CVE-2020-26235
