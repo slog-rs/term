@@ -91,8 +91,13 @@ use slog::*;
 use std::cell::RefCell;
 use std::io::Write as IoWrite;
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::result;
+use std::result::Result;
 use std::{fmt, io, mem, sync};
+use termcolor::Color;
+use termcolor::ColorChoice;
+use termcolor::ColorSpec;
+use termcolor::StandardStream;
+use termcolor::WriteColor;
 // }}}
 
 // {{{ Decorator
@@ -461,7 +466,7 @@ where
         &self,
         record: &Record,
         values: &OwnedKVList,
-    ) -> result::Result<Self::Ok, Self::Err> {
+    ) -> Result<Self::Ok, Self::Err> {
         self.format_full(record, values)
     }
 }
@@ -607,7 +612,7 @@ where
         &self,
         record: &Record,
         values: &OwnedKVList,
-    ) -> result::Result<Self::Ok, Self::Err> {
+    ) -> Result<Self::Ok, Self::Err> {
         self.format_compact(record, values)
     }
 }
@@ -1292,25 +1297,7 @@ where
 
 // {{{ TermDecorator
 
-enum AnyTerminal {
-    /// A terminal that supports colors (via `termcolor::WriteColor`)
-    Colored {
-        term: Box<dyn termcolor::WriteColor>,
-        should_use_color: bool,
-    },
-    FallbackStdout,
-    FallbackStderr,
-}
-
-impl AnyTerminal {
-    fn should_use_color(&self) -> bool {
-        match *self {
-            AnyTerminal::Colored { ref term, should_use_color } => term.supports_color() && should_use_color, 
-            AnyTerminal::FallbackStdout => false,
-            AnyTerminal::FallbackStderr => false,
-        }
-    }
-}
+type AnyTerminal = termcolor::StandardStream;
 
 /// `TermDecorator` builder
 pub struct TermDecoratorBuilder {
@@ -1350,24 +1337,32 @@ impl TermDecoratorBuilder {
         self
     }
 
-    fn _build(self, fallback: bool) -> result::Result<TermDecorator, UnsupportedTerminalError> {
-        todo!()
-    }
-
     /// Try to build `TermDecorator`
     ///
     /// Unlike `build` this will not fall-back to raw `stdout`/`stderr`
     /// if it wasn't able to use terminal and its features directly
     /// (eg. if `TERM` env. was not set).
     pub fn try_build(self) -> Option<TermDecorator> {
-        let io = if todo!();
-
-        io.map(|io| {
-            let use_color = self.color.unwrap_or_else(|| io.should_use_color());
-            TermDecorator {
-                use_color,
-                term: RefCell::new(io),
-            }
+        let color_choice = match self.color {
+            Some(true) => ColorChoice::Always,
+            Some(false) => return None,
+            None => ColorChoice::Auto,
+        };
+        let (term, atty) = if self.use_stderr {
+            (
+                termcolor::StandardStream::stderr(color_choice),
+                atty::is(atty::Stream::Stderr),
+            )
+        } else {
+            (
+                termcolor::StandardStream::stdout(color_choice),
+                atty::is(atty::Stream::Stdout),
+            )
+        };
+        let supports_color = term.supports_color();
+        Some(TermDecorator {
+            term: RefCell::new(term),
+            use_color: self.color.unwrap_or(atty && supports_color),
         })
     }
 
@@ -1376,41 +1371,15 @@ impl TermDecoratorBuilder {
     /// Unlike `try_build` this it will fall-back to using plain `stdout`/`stderr`
     /// if it wasn't able to use terminal directly.
     pub fn build(self) -> TermDecorator {
-        let io = if self.use_stderr {
-            term::stderr()
-                .map(|t| {
-                    let supports_reset = t.supports_reset();
-                    let supports_color = t.supports_color();
-                    let supports_bold = t.supports_attr(term::Attr::Bold);
-                    AnyTerminal::Stderr {
-                        term: t,
-                        supports_reset,
-                        supports_color,
-                        supports_bold,
-                    }
-                })
-                .unwrap_or(AnyTerminal::FallbackStderr)
-        } else {
-            term::stdout()
-                .map(|t| {
-                    let supports_reset = t.supports_reset();
-                    let supports_color = t.supports_color();
-                    let supports_bold = t.supports_attr(term::Attr::Bold);
-                    AnyTerminal::Stdout {
-                        term: t,
-                        supports_reset,
-                        supports_color,
-                        supports_bold,
-                    }
-                })
-                .unwrap_or(AnyTerminal::FallbackStdout)
-        };
-
-        let use_color = self.color.unwrap_or_else(|| io.should_use_color());
-        TermDecorator {
-            term: RefCell::new(io),
-            use_color,
-        }
+        let use_stderr = self.use_stderr;
+        self.try_build().unwrap_or_else(|| TermDecorator {
+            term: RefCell::new(if use_stderr {
+                StandardStream::stderr(ColorChoice::Never)
+            } else {
+                StandardStream::stdout(ColorChoice::Never)
+            }),
+            use_color: false,
+        })
     }
 }
 
@@ -1436,27 +1405,16 @@ impl TermDecorator {
     /// `Level` color
     ///
     /// Standard level to Unix color conversion used by `TermDecorator`
-    pub fn level_to_color(level: slog::Level) -> u16 {
+    pub fn level_to_color(level: slog::Level) -> Color {
         match level {
-            Level::Critical => 5,
-            Level::Error => 1,
-            Level::Warning => 3,
-            Level::Info => 2,
-            Level::Debug => 6,
-            Level::Trace => 4,
+            Level::Critical => Color::Magenta,
+            Level::Error => Color::Red,
+            Level::Warning => Color::Yellow,
+            Level::Info => Color::Green,
+            Level::Debug => Color::Cyan,
+            Level::Trace => Color::Blue,
         }
     }
-}
-
-/// An error indicating that a terminal doesn't support the requested
-/// features (but they were required).
-///
-/// This typically happens with color support (specifically on windows)
-#[derive(Debug, thiserror::Error)]
-#[error("Terminal {name:?} doesn't support {feature_name}")]
-pub struct UnsupportedTerminalError {
-    name: std::borrow::Cow<'static, str>,
-    feature_name: &'static str
 }
 
 impl Decorator for TermDecorator {
@@ -1474,6 +1432,7 @@ impl Decorator for TermDecorator {
             term: &mut *term,
             level: record.level(),
             use_color: self.use_color,
+            current_color: None,
         };
         {
             f(&mut deco)
@@ -1484,27 +1443,32 @@ impl Decorator for TermDecorator {
 /// Record decorator used by `TermDecorator`
 pub struct TermRecordDecorator<'a> {
     term: &'a mut AnyTerminal,
+    current_color: Option<ColorSpec>,
     level: slog::Level,
     use_color: bool,
+}
+impl TermRecordDecorator<'_> {
+    #[inline]
+    fn with_color(
+        &mut self,
+        func: impl FnOnce(&mut ColorSpec) -> &mut ColorSpec,
+    ) -> io::Result<()> {
+        if !self.use_color {
+            return Ok(());
+        };
+        let spec = self.current_color.get_or_insert_with(ColorSpec::new);
+        func(spec);
+        self.term.set_color(&*spec) // TODO: Should batch color updates
+    }
 }
 
 impl<'a> io::Write for TermRecordDecorator<'a> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        match *self.term {
-            AnyTerminal::Stdout { ref mut term, .. } => term.write(buf),
-            AnyTerminal::Stderr { ref mut term, .. } => term.write(buf),
-            AnyTerminal::FallbackStdout => std::io::stdout().write(buf),
-            AnyTerminal::FallbackStderr => std::io::stderr().write(buf),
-        }
+        self.term.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        match *self.term {
-            AnyTerminal::Stdout { ref mut term, .. } => term.flush(),
-            AnyTerminal::Stderr { ref mut term, .. } => term.flush(),
-            AnyTerminal::FallbackStdout => std::io::stdout().flush(),
-            AnyTerminal::FallbackStderr => std::io::stderr().flush(),
-        }
+        self.term.flush()
     }
 }
 
@@ -1514,92 +1478,35 @@ impl<'a> Drop for TermRecordDecorator<'a> {
     }
 }
 
-fn term_error_to_io_error(e: term::Error) -> io::Error {
-    match e {
-        term::Error::Io(e) => e,
-        e => io::Error::new(io::ErrorKind::Other, format!("term error: {}", e)),
-    }
-}
-
 impl<'a> RecordDecorator for TermRecordDecorator<'a> {
     fn reset(&mut self) -> io::Result<()> {
-        if !self.use_color {
-            return Ok(());
-        }
-        match *self.term {
-            AnyTerminal::Stdout {
-                ref mut term,
-                supports_reset,
-                ..
-            } if supports_reset => term.reset(),
-            AnyTerminal::Stderr {
-                ref mut term,
-                supports_reset,
-                ..
-            } if supports_reset => term.reset(),
-            _ => Ok(()),
-        }
-        .map_err(term_error_to_io_error)
+        self.with_color(|spec| {
+            spec.clear();
+            spec
+        })
     }
 
     fn start_level(&mut self) -> io::Result<()> {
-        if !self.use_color {
-            return Ok(());
-        }
-        let color = TermDecorator::level_to_color(self.level);
-        match *self.term {
-            AnyTerminal::Stdout {
-                ref mut term,
-                supports_color,
-                ..
-            } if supports_color => term.fg(color as term::color::Color),
-            AnyTerminal::Stderr {
-                ref mut term,
-                supports_color,
-                ..
-            } if supports_color => term.fg(color as term::color::Color),
-            _ => Ok(()),
-        }
-        .map_err(term_error_to_io_error)
+        let level = self.level;
+        self.with_color(|spec| {
+            spec.set_fg(Some(TermDecorator::level_to_color(level)));
+            spec
+        })
     }
 
     fn start_key(&mut self) -> io::Result<()> {
         if !self.use_color {
             return Ok(());
         }
-        match self.term {
-            &mut AnyTerminal::Stdout {
-                ref mut term,
-                supports_color,
-                supports_bold,
-                ..
-            } => {
-                if supports_bold {
-                    term.attr(term::Attr::Bold)
-                } else if supports_color {
-                    term.fg(term::color::BRIGHT_WHITE)
-                } else {
-                    Ok(())
-                }
-            }
-            &mut AnyTerminal::Stderr {
-                ref mut term,
-                supports_color,
-                supports_bold,
-                ..
-            } => {
-                if supports_bold {
-                    term.attr(term::Attr::Bold)
-                } else if supports_color {
-                    term.fg(term::color::BRIGHT_WHITE)
-                } else {
-                    Ok(())
-                }
-            }
-            &mut AnyTerminal::FallbackStdout
-            | &mut AnyTerminal::FallbackStderr => Ok(()),
-        }
-        .map_err(term_error_to_io_error)
+        /*
+         * TODO: What if the console doesn't support "bold"?
+         *
+         * Traditional fallback (using term crate) was to use
+         * term::color::BRIGHT_WHITE
+         */
+        self.with_color(|spec| spec.set_bold(true))?;
+
+        Ok(())
     }
 
     fn start_msg(&mut self) -> io::Result<()> {
