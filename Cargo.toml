@@ -17,7 +17,7 @@ nested-values = ["erased-serde", "serde", "serde_json", "slog/nested-values"]
 [dependencies]
 slog = "2"
 atty = "0.2"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+time = { version = "0.3", default-features = false, features = ["std", "macros", "formatting", "local-offset"] }
 thread_local = "1"
 term = "0.7"
 erased-serde = {version = "0.3", optional = true }

@@ -1083,21 +1083,27 @@ where
 {
 }
 
-const TIMESTAMP_FORMAT: &str = "%b %d %H:%M:%S%.3f";
+const TIMESTAMP_FORMAT: &[time::format_description::FormatItem] = time::macros::format_description!("[month repr:short] [day] [hour repr:24]:[minute]:[second].[subsecond digits:3]");
 
 /// Default local timezone timestamp function
 ///
 /// The exact format used, is still subject to change.
 pub fn timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
-    write!(io, "{}", chrono::Local::now().format(TIMESTAMP_FORMAT))
+    let now: time::OffsetDateTime = std::time::SystemTime::now().into();
+    write!(io, "{}", now.format(TIMESTAMP_FORMAT).map_err(convert_time_fmt_error)?)
 }
 
 /// Default UTC timestamp function
 ///
 /// The exact format used, is still subject to change.
 pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
-    write!(io, "{}", chrono::Utc::now().format(TIMESTAMP_FORMAT))
+    let now = time::OffsetDateTime::now_utc();
+    write!(io, "{}", now.format(TIMESTAMP_FORMAT).map_err(convert_time_fmt_error)?)
 }
+fn convert_time_fmt_error(cause: time::error::Format) -> io::Error {
+    return io::Error::new(io::ErrorKind::Other, cause);
+}
+
 // }}}
 
 // {{{ Plain
