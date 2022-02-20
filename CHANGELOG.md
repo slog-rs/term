@@ -6,6 +6,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 <!-- next-url -->
 ## [Unreleased](https://github.com/slog-rs/term/compare/v2.8.1...HEAD) - ReleaseDate
+
+## 2.9.0 - 2022-02-20
 ### Changed
 
 * Switch from `chrono` to `term`
