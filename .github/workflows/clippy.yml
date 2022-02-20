@@ -1,0 +1,39 @@
+# This is the clippy workflow, seperate from the main 'Rust' workflow
+#
+# This will fail if clippy fails (if we encounter any of its "correctness" lints)
+#
+# Clippy warnings won't fail the build. They may or may not turn into Github warnings.
+#
+# TODO: Test clippy with different feature combos?
+# TODO: Should we fail on clippy warnings?
+on: [push, pull_request]
+name: Clippy
+
+env:
+  CARGO_TERM_COLOR: always
+  # has a history of occasional bugs (especially on old versions)
+  #
+  # the ci is free so we might as well use it ;)
+  CARGO_INCREMENTAL: 0
+
+
+jobs:
+  clippy:
+    # Only run on PRs if the source branch is on someone else's repo
+    if: ${{ github.event_name != 'pull_request' || github.repository != github.event.pull_request.head.repo.full_name }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          override: true
+          components: clippy
+      - shell: bash
+        run: |
+          cargo clippy
