@@ -6,9 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 <!-- next-url -->
 ## [Unreleased](https://github.com/slog-rs/term/compare/v2.8.1...HEAD) - ReleaseDate
-## Changed
+### Changed
 
-### 2.8.1 - 2022-02-09
+## 2.8.1 - 2022-02-09
 ### Fixed
 
 * Disable default features on chrono to address RUSTSEC-2020-0071 aka CVE-2020-26235
