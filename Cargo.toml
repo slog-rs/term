@@ -10,6 +10,14 @@ homepage = "https://github.com/slog-rs/slog"
 repository = "https://github.com/slog-rs/term"
 readme = "README.md"
 edition = "2018"
+# This is our Minimum Supported Rust Version (MSRV)
+#
+# Please do not bump this unnecessarily.
+# Changing this should bump the minor version for semver (2.x for semver).
+#
+# The first version of Cargo that supports this field was in Rust 1.56.0.
+# In older releases, the field will be ignored, and Cargo will display a warning.
+rust-version = "1.53"
 
 [features]
 nested-values = ["erased-serde", "serde", "serde_json", "slog/nested-values"]
