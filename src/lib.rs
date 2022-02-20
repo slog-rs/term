@@ -843,7 +843,7 @@ impl<'a> slog::ser::Serializer for Serializer<'a> {
             val.as_serde(),
             &mut serde_json::Serializer::new(&mut writer),
         )
-        .map_err(|e| std::io::Error::from(e))?;
+        .map_err(std::io::Error::from)?;
         let val =
             std::str::from_utf8(&writer).expect("serde JSON is always UTF-8");
         s!(self, key, val);
@@ -881,7 +881,7 @@ impl<'a> CompactFormatSerializer<'a> {
             let (print, trunc, push) =
                 if let Some(prev) = self.history.get_mut(indent) {
                     if *prev != buf {
-                        *prev = mem::replace(&mut buf, (vec![], vec![]));
+                        *prev = mem::take(&mut buf);
                         (true, true, false)
                     } else {
                         (false, false, false)
@@ -891,7 +891,7 @@ impl<'a> CompactFormatSerializer<'a> {
                 };
 
             if push {
-                self.history.push(mem::replace(&mut buf, (vec![], vec![])));
+                self.history.push(mem::take(&mut buf));
             }
 
             if trunc {
@@ -1111,7 +1111,7 @@ pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
     )
 }
 fn convert_time_fmt_error(cause: time::error::Format) -> io::Error {
-    return io::Error::new(io::ErrorKind::Other, cause);
+    io::Error::new(io::ErrorKind::Other, cause)
 }
 
 // }}}
