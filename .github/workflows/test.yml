@@ -1,0 +1,51 @@
+# We use `actions-rs` for most of our actions
+#
+# This file is for the main tests. clippy & rustfmt are seperate workflows
+#
+# It is mostly copied from slog-rs/slog
+on: [push, pull_request]
+name: Cargo Test
+
+env:
+  CARGO_TERM_COLOR: always
+  # has a history of occasional bugs (especially on old versions)
+  #
+  # the ci is free so we might as well use it ;)
+  CARGO_INCREMENTAL: 0
+
+
+# Tested versions:
+# 1. stable
+# 2. nightly
+# 3. Minimum Supported Rust Version (MSRV)
+
+jobs:
+  test:
+    # Only run on PRs if the source branch is on someone else's repo
+    if: ${{ github.event_name != 'pull_request' || github.repository != github.event.pull_request.head.repo.full_name }}
+
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # Even if one job fails we still want to see the other ones
+      matrix:
+        # 1.53 is MSRV. Keep in sync with Cargo.toml
+        rust: [1.53, stable, nightly]
+        # NOTE: Features to test must be specified manually. They are applied to all versions seperately.
+       #
+        # This has the advantage of being more flexibile and thorough
+        # This has the disadvantage of being more vebrose
+        #
+        # Specific feature combos can be overriden per-version with 'include' and 'exclude'
+        features: ["", "nested-values"]
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+      # NOTE: We only run `cargo test`. No need for a seperate `cargo check`
+      - name: Test
+        run: |
+          cargo test --verbose --features "${{ matrix.features }}"
+ 
