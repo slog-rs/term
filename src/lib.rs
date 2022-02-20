@@ -1090,7 +1090,12 @@ const TIMESTAMP_FORMAT: &[time::format_description::FormatItem] = time::macros::
 /// The exact format used, is still subject to change.
 pub fn timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
     let now: time::OffsetDateTime = std::time::SystemTime::now().into();
-    write!(io, "{}", now.format(TIMESTAMP_FORMAT).map_err(convert_time_fmt_error)?)
+    write!(
+        io,
+        "{}",
+        now.format(TIMESTAMP_FORMAT)
+            .map_err(convert_time_fmt_error)?
+    )
 }
 
 /// Default UTC timestamp function
@@ -1098,7 +1103,12 @@ pub fn timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
 /// The exact format used, is still subject to change.
 pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
     let now = time::OffsetDateTime::now_utc();
-    write!(io, "{}", now.format(TIMESTAMP_FORMAT).map_err(convert_time_fmt_error)?)
+    write!(
+        io,
+        "{}",
+        now.format(TIMESTAMP_FORMAT)
+            .map_err(convert_time_fmt_error)?
+    )
 }
 fn convert_time_fmt_error(cause: time::error::Format) -> io::Error {
     return io::Error::new(io::ErrorKind::Other, cause);
