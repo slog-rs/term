@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## 2.9.0 - 2022-02-20
 ### Changed
 
-* Switch from `chrono` to `term`
+* Switch from `chrono` to `time`
     * Merges PR #39 - Thanks @JanZerebecki
     * Avoids [RUSTSEC-2020-0159](https://rustsec.org/advisories/RUSTSEC-2020-0159)
 * BREAKING: Bump MSRV to 1.53
