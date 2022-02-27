@@ -1089,7 +1089,8 @@ const TIMESTAMP_FORMAT: &[time::format_description::FormatItem] = time::macros::
 ///
 /// The exact format used, is still subject to change.
 pub fn timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
-    let now: time::OffsetDateTime = std::time::SystemTime::now().into();
+    let now = time::OffsetDateTime::now_local()
+        .map_err(convert_time_indeterminate_offset_error)?;
     write!(
         io,
         "{}",
@@ -1110,6 +1111,13 @@ pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
             .map_err(convert_time_fmt_error)?
     )
 }
+
+fn convert_time_indeterminate_offset_error(
+    cause: time::error::IndeterminateOffset,
+) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, cause)
+}
+
 fn convert_time_fmt_error(cause: time::error::Format) -> io::Error {
     io::Error::new(io::ErrorKind::Other, cause)
 }
