@@ -47,5 +47,7 @@ jobs:
       # NOTE: We only run `cargo test`. No need for a seperate `cargo check`
       - name: Test
         run: |
-          cargo test --verbose --features "${{ matrix.features }}"
+          # Force a once-cell version compatible with 1.53
+          cargo update --package once_cell --precise 1.14.0
+          cargo test --locked --verbose --features "${{ matrix.features }}"
  
