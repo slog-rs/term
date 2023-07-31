@@ -93,6 +93,12 @@ use std::io::Write as IoWrite;
 use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::result;
 use std::{fmt, io, mem, sync};
+
+// TODO: Should probably look into `std::io::IsTerminal` if/when that becomes stable
+// See tracking issue rust-lang/rust#98070
+//
+// This should really be an issue we file on the `is-terminal` crate
+use is_terminal::IsTerminal;
 // }}}
 
 // {{{ Decorator
@@ -1332,8 +1338,8 @@ enum AnyTerminal {
 impl AnyTerminal {
     fn should_use_color(&self) -> bool {
         match *self {
-            AnyTerminal::Stdout { .. } => atty::is(atty::Stream::Stdout),
-            AnyTerminal::Stderr { .. } => atty::is(atty::Stream::Stderr),
+            AnyTerminal::Stdout { .. } => std::io::stdout().is_terminal(),
+            AnyTerminal::Stderr { .. } => std::io::stderr().is_terminal(),
             AnyTerminal::FallbackStdout => false,
             AnyTerminal::FallbackStderr => false,
         }
