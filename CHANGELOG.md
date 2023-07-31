@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 <!-- next-url -->
 ## [Unreleased](https://github.com/slog-rs/term/compare/v2.8.1...HEAD) - ReleaseDate
+* Switch from `atty` to `is_terminal`
+    * Avoids [RUSTSEC-2021-0145](https://rustsec.org/advisories/RUSTSEC-2021-0145)
+* BREAKING: Bump MSRV to 1.63
 
 ## 2.9.0 - 2022-02-20
 ### Changed

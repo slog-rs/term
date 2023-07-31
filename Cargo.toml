@@ -17,7 +17,7 @@ edition = "2018"
 #
 # The first version of Cargo that supports this field was in Rust 1.56.0.
 # In older releases, the field will be ignored, and Cargo will display a warning.
-rust-version = "1.53"
+rust-version = "1.63"
 
 [features]
 nested-values = ["erased-serde", "serde", "serde_json", "slog/nested-values"]
