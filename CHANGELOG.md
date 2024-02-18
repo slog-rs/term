@@ -6,9 +6,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 <!-- next-url -->
 ## [Unreleased](https://github.com/slog-rs/term/compare/v2.8.1...HEAD) - ReleaseDate
+
+## 2.9.1 - 2024-02-18
+### Fixed
 * Switch from `atty` to `is_terminal`
     * Avoids [RUSTSEC-2021-0145](https://rustsec.org/advisories/RUSTSEC-2021-0145)
-* BREAKING: Bump MSRV to 1.63
+    * Merges PR #47 - Thanks @rkd-msw
+
+### Changed
+* Bump MSRV to 1.63
+    * This rust version was released almost 2 years ago.
+      I don't consider this significant enough to bump the minor version.
 
 ## 2.9.0 - 2022-02-20
 ### Changed
