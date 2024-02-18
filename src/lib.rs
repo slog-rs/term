@@ -356,6 +356,7 @@ where
     }
 
     /// Use the local time zone for the timestamp (default)
+    #[cfg(feature = "localtime")]
     pub fn use_local_timestamp(mut self) -> Self {
         self.fn_timestamp = Box::new(timestamp_local);
         self
@@ -1089,18 +1090,53 @@ where
 {
 }
 
-const TIMESTAMP_FORMAT: &[time::format_description::FormatItem] = time::macros::format_description!("[month repr:short] [day] [hour repr:24]:[minute]:[second].[subsecond digits:3]");
+const TIMESTAMP_FORMAT: &[time::format_description::FormatItem] = time::macros::format_description!(
+    concat!(
+        "[month repr:short] [day]",
+        "[hour repr:24]:[minute]:[second].[subsecond digits:3]",
+        // Include timezone by default, to avoid ambiguity
+        "[offset_hour sign:mandatory]"
+    )
+);
+
+/// Convert from [`chrono::DateTime`]  into [`time::OffsetDateTime`]
+#[cfg(feature = "localtime")]
+fn local_timestamp_from_chrono(
+    local: chrono::DateTime<chrono::Local>
+) -> result::Result<time::OffsetDateTime, TimestampError> {
+    use chrono::{Local, Utc};
+    let local_time: chrono::DateTime<Local> = Local::now();
+    let offset: chrono::FixedOffset = local_time.fixed_offset().timezone();
+    let utc_time: chrono::DateTime<Utc> = local_time.to_utc();
+    #[cfg(test)] {
+        if offset.local_minus_utc() == 0 {
+            assert_eq!(utc_time.date_naive(), local_time.date_naive());
+        } else {
+            assert_ne!(utc_time.date_naive(), local_time.date_naive());
+        }
+    }
+    let utc_time: time::OffsetDateTime = time::OffsetDateTime::from_unix_timestamp(utc_time.timestamp())
+        .map_err(LocalTimestampError::UnixTimestamp)
+        + time::Duration::nanoseconds(i64::from(utc_time.timestamp_subsec_nanos()));
+    Ok(utc_time.to_offset(time::UtcOffset::from_whole_seconds(offset.local_minus_utc())?))
+}
 
 /// Default local timezone timestamp function
 ///
 /// The exact format used, is still subject to change.
+///
+/// # Implementation Note
+/// This requires `chrono` to detect the localtime in a thread-safe manner.
+/// See the comment on the feature flag and PR #44
+#[cfg(feature = "localtime")]
 pub fn timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
-    let now: time::OffsetDateTime = std::time::SystemTime::now().into();
+    let now = local_timestamp_from_chrono(chrono::Local::now())
+        .map_err(TimestampError::LocalConversion)?;
     write!(
         io,
         "{}",
         now.format(TIMESTAMP_FORMAT)
-            .map_err(convert_time_fmt_error)?
+            .map_err(TimestampError::Format)?
     )
 }
 
@@ -1113,11 +1149,44 @@ pub fn timestamp_utc(io: &mut dyn io::Write) -> io::Result<()> {
         io,
         "{}",
         now.format(TIMESTAMP_FORMAT)
-            .map_err(convert_time_fmt_error)?
+            .map_err(TimestampError::Format)?
     )
 }
-fn convert_time_fmt_error(cause: time::error::Format) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, cause)
+
+/// An internal error that occurs with timestamps
+#[derive(Debug)]
+#[non_exhaustive]
+enum TimestampError {
+    /// An error formatting the timestamp
+    Format(time::error::Format),
+    /// An error that occurred while 
+    /// converting from `chrono::DateTime<Local>` to `time::OffsetDateTime`
+    LocalTimeConversion(time::error::ComponentRange)
+}
+/*
+ * We could use thiserror here,
+ * but writing it by hand is almost as good and eliminates a dependency
+ */
+impl fmt::Display for TimestampError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TimestampError::Format(cause) => write!(f, "Failed to format timestamp: {cause}"),
+            TimestampError::LocalTimeConversion(cause) => write!(f, "Failed to convert local time: {cause}")
+        }
+    }
+}
+impl From<TimestampError> for io::Error {
+    fn from(cause: TimestampError) -> Self {
+        io::Error::new(io::ErrorKind::Other, cause)
+    }
+}
+impl std::error::Error for TimestampError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            TimestampError::Format(cause) => Some(cause),
+            TimestampError::LocalTimeConversion(cause) => Some(cause),
+        }
+    }
 }
 
 // }}}
