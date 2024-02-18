@@ -31,6 +31,18 @@ term = "0.7"
 erased-serde = {version = "0.3", optional = true }
 serde = {version = "1.0", optional = true }
 serde_json = {version = "1.0", optional = true }
+# We use chrono is to determine the local timezone offset.
+# This is because time uses POSIX localtime_r,
+# which is not guaranteed to be thread-safe
+#
+# However, chrono _is_ threadsafe. It works around this issue by
+# using a custom reimplementation of the timezone detection logic.
+#
+# Therefore, whenever the feature 'localtime' is requested,
+# we add a dependency on chrono to detect the timezone.
+#
+# See PR #44 for the original discussion of this issue.
+chrono = "0.4"
 
 [dev-dependencies]
 slog-async = "2"
