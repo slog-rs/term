@@ -20,7 +20,22 @@ edition = "2018"
 rust-version = "1.63"
 
 [features]
+# Enabled for compatibility reasons
+default = ["localtime"]
 nested-values = ["erased-serde", "serde", "serde_json", "slog/nested-values"]
+# Automatically detect and use the local timezone for timestamps.
+#
+# This is enabled by default for compatibility reasons,
+# but can be explicitly disabled to reduce dependencies.
+#
+# This option only affects the default behavior
+# and enables support for automatic selection.
+#
+# Either way an explicit timezone suffix is added for clarity
+# UTC: 21:43+00
+# MST: 14:43-07
+localtime = ["chrono"]
+
 
 [dependencies]
 slog = "2"
@@ -31,6 +46,18 @@ term = "0.7"
 erased-serde = {version = "0.3", optional = true }
 serde = {version = "1.0", optional = true }
 serde_json = {version = "1.0", optional = true }
+# We use chrono is to determine the local timezone offset.
+# This is because time uses POSIX localtime_r,
+# which is not guarenteed to be thread-safe
+#
+# However, chrono _is_ threadsafe. It works around this issue by
+# using a custom reimplementation of the timezone detection logic.
+#
+# Therefore, whenever the feature 'localtime' is requested,
+# we add a dependency on chrono to detect the timezone.
+#
+# See PR #44 for the original discussion of this issue.
+chrono = { version = "0.4", optional = true }d
 
 [dev-dependencies]
 slog-async = "2"
