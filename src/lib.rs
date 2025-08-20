@@ -104,7 +104,7 @@ use is_terminal::IsTerminal;
 // {{{ Decorator
 /// Output decorator
 ///
-/// Trait implementing strategy of output formating in terms of IO,
+/// Trait implementing strategy of output formatting in terms of IO,
 /// colors, etc.
 pub trait Decorator {
     /// Get a `RecordDecorator` for a given `record`
@@ -281,7 +281,7 @@ pub fn print_msg_header(
 // {{{ Header Printer
 /// Threadsafe header formatting function type
 ///
-/// To satify `slog-rs` thread and unwind safety requirements, the
+/// To satisfy `slog-rs` thread and unwind safety requirements, the
 /// bounds expressed by this trait need to satisfied for a function
 /// to be used in timestamp formatting.
 pub trait ThreadSafeHeaderFn:
@@ -1068,7 +1068,7 @@ impl<'a> io::Write for CountingWriter<'a> {
 // {{{ Timestamp
 /// Threadsafe timestamp formatting function type
 ///
-/// To satify `slog-rs` thread and unwind safety requirements, the
+/// To satisfy `slog-rs` thread and unwind safety requirements, the
 /// bounds expressed by this trait need to satisfied for a function
 /// to be used in timestamp formatting.
 pub trait ThreadSafeTimestampFn:

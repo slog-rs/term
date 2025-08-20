@@ -1,4 +1,4 @@
-# This is the clippy workflow, seperate from the main 'Rust' workflow
+# This is the clippy workflow, separate from the main 'Rust' workflow
 #
 # This will fail if clippy fails (if we encounter any of its "correctness" lints)
 #

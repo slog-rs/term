@@ -1,0 +1,13 @@
+[default]
+extend-ignore-re = [
+    # support spellchecker directives (ideally this would be builtin)
+    "(?Rm)^.*(#|//)\\s*spellchecker:ignore$",
+    "(?s)(#|//)\\s*spellchecker:off.*?\\n\\s*(#|//)\\s*spellchecker:on",
+]
+
+[files]
+ignore-hidden = false
+extend-exclude = [
+    ".git", # needed because we set 'ignore-hidden'
+]
+
