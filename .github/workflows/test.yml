@@ -40,10 +40,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
-          override: true
       # NOTE: We only run `cargo test`. No need for a separate `cargo check`
       - name: Test
         run: |

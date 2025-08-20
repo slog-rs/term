@@ -20,11 +20,8 @@ jobs:
           - stable
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          profile: minimal
-          toolchain: ${{ matrix.rust }}
-          override: true
           components: rustfmt
       - shell: bash
         run: |

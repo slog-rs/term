@@ -28,12 +28,10 @@ jobs:
           - stable
     steps:
       - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@master
         with:
-          profile: minimal
           toolchain: ${{ matrix.rust }}
-          override: true
-          components: clippy
+          components: clippy 
       - shell: bash
         run: |
           cargo clippy
