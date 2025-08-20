@@ -43,6 +43,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
+      - name: Cache Cargo Registry
+        id: cache-index
+        uses: actions/cache@v4
+        with:
+          path:
+            # Before the sparse index, updating the registry took forever
+            ~/.cargo/registry/index/
+          key: ${{ runner.os }}-cargo-${{ matrix.rust }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       # NOTE: We only run `cargo test`. No need for a separate `cargo check`
       - name: Test
         run: |
