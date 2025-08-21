@@ -641,7 +641,7 @@ where
             let indent = {
                 let mut history_ref = self.history.borrow_mut();
                 let mut serializer =
-                    CompactFormatSerializer::new(decorator, &mut *history_ref);
+                    CompactFormatSerializer::new(decorator, &mut history_ref);
 
                 values.serialize(record, &mut serializer)?;
 
@@ -905,7 +905,7 @@ impl<'a> CompactFormatSerializer<'a> {
             }
 
             if print {
-                let &(ref k, ref v) =
+                let (k, v) =
                     self.history.get(indent).expect("assertion failed");
                 self.decorator.start_whitespace()?;
                 for _ in 0..indent {
@@ -1035,7 +1035,7 @@ pub struct CountingWriter<'a> {
 
 impl<'a> CountingWriter<'a> {
     /// Create `CountingWriter` instance
-    pub fn new(wrapped: &'a mut dyn io::Write) -> CountingWriter {
+    pub fn new(wrapped: &'a mut dyn io::Write) -> CountingWriter<'a> {
         CountingWriter { wrapped, count: 0 }
     }
 
@@ -1142,7 +1142,6 @@ fn convert_time_fmt_error(cause: time::error::Format) -> io::Error {
 /// .build()
 /// .fuse();
 /// ```
-
 pub struct PlainDecorator<W>(RefCell<W>)
 where
     W: io::Write;
@@ -1514,7 +1513,7 @@ impl Decorator for TermDecorator {
     {
         let mut term = self.term.borrow_mut();
         let mut deco = TermRecordDecorator {
-            term: &mut *term,
+            term: &mut term,
             level: record.level(),
             use_color: self.use_color,
         };
