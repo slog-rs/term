@@ -1404,6 +1404,10 @@ enum AnyTerminal {
 
 impl AnyTerminal {
     fn should_use_color(&self) -> bool {
+        // Respect NO_COLOR <https://no-color.org/>
+        if std::env::var_os("NO_COLOR").map_or(false, |x| !x.is_empty()) {
+            return false;
+        }
         match *self {
             AnyTerminal::Stdout { .. } => std::io::stdout().is_terminal(),
             AnyTerminal::Stderr { .. } => std::io::stderr().is_terminal(),

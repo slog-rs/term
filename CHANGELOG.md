@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 [slog#267]: https://github.com/slog-rs/slog/issues/267
 
+### Changed
+* Respect the [`NO_COLOR`] environment variable.
+
+[`NO_COLOR`]: https://no-color.org/
+
 ## 2.9.1 - 2024-02-18
 ### Fixed
 * Switch from `atty` to `is_terminal`
