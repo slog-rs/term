@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-url -->
 ## [Unreleased](https://github.com/slog-rs/term/compare/v2.8.1...HEAD) - ReleaseDate
 
+## 2.9.2 - 2025-08-20
 ### Fixed
 * Avoid thread-safety issues with `localtime_r` function by using `chrono` to detect local time.
     * Unfortunately this adds another dependency.
