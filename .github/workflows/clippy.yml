@@ -1,11 +1,3 @@
-# This is the clippy workflow, separate from the main 'Rust' workflow
-#
-# This will fail if clippy fails (if we encounter any of its "correctness" lints)
-#
-# Clippy warnings won't fail the build. They may or may not turn into Github warnings.
-#
-# TODO: Test clippy with different feature combos?
-# TODO: Should we fail on clippy warnings?
 on: [push, pull_request]
 name: Clippy
 
@@ -21,17 +13,29 @@ jobs:
   clippy:
     # Only run on PRs if the source branch is on someone else's repo
     if: ${{ github.event_name != 'pull_request' || github.repository != github.event.pull_request.head.repo.full_name }}
+
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         rust:
+          # in hardcoded versions, warnings will fail the build
+          - 1.89
+          # in auto-updated versions, warnings will not fail the build
           - stable
+          - nightly
+
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           components: clippy 
-      - shell: bash
+      - name: Clippy
         run: |
-          cargo clippy
+          cargo clippy --all --all-targets --verbose --all-features -- -D warnings
+        # When using hardcoded/pinned versions, warnings are forbidden.
+        #
+        # On automatically updated versions of rust (both stable & nightly) we allow clippy to fail.
+        # This is because automatic updates can introduce new lints or change existing lints.
+        continue-on-error: ${{ !contains(matrix.rust, '1.') }}
