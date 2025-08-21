@@ -27,7 +27,7 @@ slog = "2"
 is-terminal = "0.4"
 time = { version = "0.3", default-features = false, features = ["macros", "formatting"] }
 thread_local = "1"
-term = "0.7"
+term = "1"
 erased-serde = {version = "0.3", optional = true }
 serde = {version = "1.0", optional = true }
 serde_json = {version = "1.0", optional = true }

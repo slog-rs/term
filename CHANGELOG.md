@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 * Avoid thread-safety issues with `localtime_r` function by using `chrono` to detect local time.
     * Unfortunately this adds another dependency.
     In the future I plan to avoid this by switching from time to chrono entirely.
+* Upgrade to term v1.0. Fixes [slog#267]
+
+[slog#267]: https://github.com/slog-rs/slog/issues/267
 
 ## 2.9.1 - 2024-02-18
 ### Fixed
