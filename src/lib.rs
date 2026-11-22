@@ -1091,29 +1091,17 @@ where
 
 const TIMESTAMP_FORMAT: &[time::format_description::FormatItem] = time::macros::format_description!("[month repr:short] [day] [hour repr:24]:[minute]:[second].[subsecond digits:3]");
 
-/// Convert from [`chrono::DateTime`] into [`time::OffsetDateTime`]
-fn local_timestamp_from_chrono(
-    local_time: chrono::DateTime<chrono::Local>,
+/// Convert from [`jiff::DateTime`] into [`time::OffsetDateTime`]
+fn local_timestamp_from_jiff(
+    local_time: jiff::Zoned,
 ) -> result::Result<time::OffsetDateTime, TimestampError> {
-    use chrono::Utc;
-    let offset: chrono::FixedOffset = local_time.fixed_offset().timezone();
-    let utc_time: chrono::DateTime<Utc> = local_time.to_utc();
-    #[cfg(test)]
-    {
-        if offset.local_minus_utc() == 0 {
-            assert_eq!(utc_time.to_rfc3339(), local_time.to_rfc3339());
-        } else {
-            assert_ne!(utc_time.to_rfc3339(), local_time.to_rfc3339());
-        }
-    }
+    let timestamp: jiff::Timestamp = local_time.timestamp();
+    let since_epoch: jiff::SignedDuration = timestamp.duration_since(jiff::Timestamp::UNIX_EPOCH);
     let utc_time: time::OffsetDateTime =
-        time::OffsetDateTime::from_unix_timestamp(utc_time.timestamp())
-            .map_err(TimestampError::LocalTimeConversion)?
-            + time::Duration::nanoseconds(i64::from(
-                utc_time.timestamp_subsec_nanos(),
-            ));
+        time::OffsetDateTime::from_unix_timestamp_nanos(since_epoch.as_nanos())
+            .map_err(TimestampError::LocalTimeConversion)?;
     Ok(utc_time.to_offset(
-        time::UtcOffset::from_whole_seconds(offset.local_minus_utc())
+        time::UtcOffset::from_whole_seconds(local_time.offset().seconds())
             .map_err(TimestampError::LocalTimeConversion)?,
     ))
 }
@@ -1123,10 +1111,10 @@ fn local_timestamp_from_chrono(
 /// The exact format used, is still subject to change.
 ///
 /// # Implementation Note
-/// This requires `chrono` to detect the localtime in a thread-safe manner.
+/// This requires `jiff` to detect the localtime in a thread-safe manner.
 /// See the comment on the dependency, PR #44 and PR #48.
 pub fn timestamp_local(io: &mut dyn io::Write) -> io::Result<()> {
-    let now = local_timestamp_from_chrono(chrono::Local::now())?;
+    let now = local_timestamp_from_jiff(jiff::Zoned::now())?;
     write!(
         io,
         "{}",
