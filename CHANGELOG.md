@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 <!-- next-url -->
 ## [Unreleased](https://github.com/slog-rs/term/compare/v2.8.1...HEAD) - ReleaseDate
 
+### Changed
+* Use `jiff` v0.2 for timezone detection instead of `chrono` v0.4
+  * This is in response to [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543.html),
+    which marks `chrono` as unmaintained.
+
 ## 2.9.2 - 2025-08-20
 ### Fixed
 * Avoid thread-safety issues with `localtime_r` function by using `chrono` to detect local time.
