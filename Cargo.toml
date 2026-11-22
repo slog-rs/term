@@ -40,7 +40,7 @@ serde_json = {version = "1.0", optional = true }
 # We formerly used chrono, but switched to jiff when it was deprecated.
 #
 # See PR #44 for the original discussion of this issue.
-jiff = { version = "0.2", features = ["std", "tz-system"], default-features = false }
+jiff = "0.2"
 
 [dev-dependencies]
 slog-async = "2"
