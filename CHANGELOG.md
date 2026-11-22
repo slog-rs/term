@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 * Use `jiff` v0.2 for timezone detection instead of `chrono` v0.4
   * This is in response to [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543.html),
     which marks `chrono` as unmaintained.
+* Bump MSRV to 1.70, as required by `jiff`
 
 ## 2.9.2 - 2025-08-20
 ### Fixed
